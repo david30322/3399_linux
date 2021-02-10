@@ -43,6 +43,10 @@ config LS_US5152
 config LS_STK3410
 	bool "light sensor stk3410"
 	default n
-
+#david add 20210121
+config LS_STK3X3X
+	bool "light sensor stk3x3x"
+	default y
+#add end
 endif
 

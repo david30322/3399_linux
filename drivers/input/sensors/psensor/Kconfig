@@ -5,7 +5,10 @@
 
 menuconfig PROXIMITY_DEVICE
 	bool "proximity sensor device support"
-	default n	
+	default y	
+# dfault n
+#david edit 20210121
+
 
 if PROXIMITY_DEVICE
 
@@ -24,6 +27,10 @@ config PS_AP321XX
 config PS_STK3410
 	bool "proximity sensor stk3410"
 	default n
-
+#david add 20210121
+config PS_STK3X3X
+	bool "proximity sensor stk3x3x"
+	default y
+#add end
 endif
 

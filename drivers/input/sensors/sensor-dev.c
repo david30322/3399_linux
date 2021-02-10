@@ -2040,6 +2040,9 @@ static const struct i2c_device_id sensor_id[] = {
 	{"lightsensor", LIGHT_ID_ALL},
 	{"light_cm3217", LIGHT_ID_CM3217},
 	{"light_cm3218", LIGHT_ID_CM3218},
+	/*david add 20210121*/
+	{"ls_stk3x3x", LIGHT_ID_STK3X3X},
+	/*add end*/
 	{"light_cm3232", LIGHT_ID_CM3232},
 	{"light_al3006", LIGHT_ID_AL3006},
 	{"ls_stk3171", LIGHT_ID_STK3171},
@@ -2054,6 +2057,9 @@ static const struct i2c_device_id sensor_id[] = {
 	{"ps_stk3171", PROXIMITY_ID_STK3171},
 	{"ps_ap321xx", PROXIMITY_ID_AP321XX},
 	{"ps_stk3410", PROXIMITY_ID_STK3410},
+	/*david add 20210121*/
+	{"ps_stk3x3x", PROXIMITY_ID_STK3X3X},
+	/*add end*/
 	/*temperature*/
 	{"temperature", TEMPERATURE_ID_ALL},
 	{"tmp_ms5607", TEMPERATURE_ID_MS5607},
@@ -2095,7 +2101,10 @@ static struct of_device_id sensor_dt_ids[] = {
 	{ .compatible = "light_al3006" },
 	{ .compatible = "ls_stk3171" },
 	{ .compatible = "ls_ap321xx" },
-
+	/*david add 20210121*/
+	{ .compatible = "ls_stk3x3x" },
+	{ .compatible = "ps_stk3x3x" },
+	/*add end*/
 	{ .compatible = "ls_photoresistor" },
 	{ .compatible = "ls_us5152" },
 	{ .compatible = "ls_stk3410" },

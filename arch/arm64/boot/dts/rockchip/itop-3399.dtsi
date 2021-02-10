@@ -13,8 +13,8 @@
 #include "rk3399-opp.dtsi"
 #include "rk3399-vop-clk-set.dtsi"
 
-#define LCD_TYPE_10_1   1
-//#define LCD_TYPE_7_0    1
+//#define LCD_TYPE_10_1   1
+#define LCD_TYPE_7_0    1
 //#define LCD_TYPE_9_7    1
 
 / {
@@ -806,6 +806,32 @@
 
         };
 	/* end add */
+/*david add*/
+	lsensor@46 {
+                 status = "okay";
+                 compatible = "stk,ls_stk3x3x";
+                 pinctrl-names = "default";
+         //        pinctrl-0 = <&stk3x3x_irq_gpio>;
+                // reg = <0x47>;
+                 reg = <0x46>;
+                 type = <SENSOR_TYPE_LIGHT SENSOR_TYPE_PROXIMITY>;
+         //        irq-gpio = <&gpio4 24 IRQ_TYPE_EDGE_FALLING>;
+                 irq_enable = <0>;
+                 poll_delay_ms = <205>;
+         };
+
+        psensor@46 {
+                 status = "okay";
+                 compatible = "stk,ps_stk3x3x";
+                 pinctrl-names = "default";
+         //        pinctrl-0 = <&stk3x3x_irq_gpio>;
+                 reg = <0x46>;
+                 type = <SENSOR_TYPE_PROXIMITY>;
+         //        irq-gpio = <&gpio4 24 IRQ_TYPE_EDGE_FALLING>;
+                 irq_enable = <0>;
+                 poll_delay_ms = <105>;
+         };
+/*david add end*/
 };
 
 &i2c4 {
