@@ -360,7 +360,7 @@ static int32_t stk3x3x_check_pid(struct i2c_client *client)
     reg_val = sensor_read_reg(client, STK_PDT_ID_REG);
     if (reg_val != STK335XX_PID)
 	{
-		printk("stk %s PID error\n", __func__);
+		printk("%s PID error\n", __func__);
 		return -1;
 	}
     printk(KERN_INFO "%s: PID=0x%x\n", __func__, reg_val);
@@ -673,7 +673,7 @@ static int stk_proximity_sensor_init(struct i2c_client *client)
 	int res = 0, i, reg_num;
 	char value;
 	 
-	printk("stk %s init ...\n", __func__);
+	printk("%s init ...\n", __func__);
 
 	ps_data = kzalloc(sizeof(struct stk3x3x_data),GFP_KERNEL);
 	if(!ps_data)
