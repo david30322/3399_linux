@@ -36,15 +36,13 @@
 #include <linux/wakelock.h>
 #include <linux/interrupt.h>
 #include <linux/gpio.h>
-#include   <linux/fs.h>   
-#include  <asm/uaccess.h> 
+#include <linux/fs.h>   
+#include <asm/uaccess.h> 
 #include <linux/sensor-dev.h>
 #include <linux/of_gpio.h>
 #ifdef CONFIG_HAS_EARLYSUSPEND
 //#include <linux/earlysuspend.h>
 #endif
-
-#define DRIVER_VERSION  "3.10.0_0429"
 
 #define STK_POLL_PS
 #define STK_TUNE0
@@ -52,94 +50,40 @@
 
 #include "linux/stk3x3x.h"
 
-/* Define Register Map */
-#define STK_STATE_REG 			0x00
-#define STK_PSCTRL_REG 			0x01
-#define STK_ALSCTRL_REG 			0x02
-#define STK_LEDCTRL_REG 			0x03
-#define STK_INT_REG 				0x04
-#define STK_WAIT_REG 			0x05
-#define STK_THDH1_PS_REG 		0x06
-#define STK_THDH2_PS_REG 		0x07
-#define STK_THDL1_PS_REG 		0x08
-#define STK_THDL2_PS_REG 		0x09
-#define STK_THDH1_ALS_REG 		0x0A
-#define STK_THDH2_ALS_REG 		0x0B
-#define STK_THDL1_ALS_REG 		0x0C
-#define STK_THDL2_ALS_REG 		0x0D
-#define STK_FLAG_REG 			0x10
-#define STK_DATA1_PS_REG	 	0x11
-#define STK_DATA2_PS_REG 		0x12
-#define STK_DATA1_ALS_REG 		0x13
-#define STK_DATA2_ALS_REG 		0x14
-#define STK_DATA1_OFFSET_REG 	0x15
-#define STK_DATA2_OFFSET_REG 	0x16
-#define STK_DATA1_IR_REG 		0x17
-#define STK_DATA2_IR_REG 		0x18
-#define STK_PDT_ID_REG 			0x3E
-#define STK_RSRVD_REG 			0x3F
-#define STK_SW_RESET_REG		0x80	
-#define STK_PD_CHOICE			0xA1
-#define STK_AGAIN_K		        0xDB
+#define STK3A5X_TRACKING_QUANTI         3
+#define STK3A5X_QUANTI_RANGE            30
+#define STK3A5X_PS_DIFF                 100
+#define STK3A5X_MAX_MIN_DIFF            200
 
-#define STK_STATE_EN_IRS_MASK	0x80
-#define STK_STATE_EN_AK_MASK	0x40
-#define STK_STATE_EN_ASO_MASK	0x20
-#define STK_STATE_EN_IRO_MASK	0x10
-#define STK_STATE_EN_WAIT_MASK	0x04
-#define STK_STATE_EN_ALS_MASK	0x02
-#define STK_STATE_EN_PS_MASK	0x01
-
-#define STK_FLG_ALSDR_MASK		0x80
-#define STK_FLG_PSDR_MASK		0x40
-#define STK_FLG_ALSINT_MASK		0x20
-#define STK_FLG_PSINT_MASK		0x10
-#define STK_FLG_OUI_MASK			0x04
-#define STK_FLG_IR_RDY_MASK		0x02
-#define STK_FLG_NF_MASK			0x01
-
-#define STK_INT_ALS				0x08
-
-/*****************************************************************************/
-#define STK_MAX_MIN_DIFF	200
-#define STK_LT_N_CT	100
-#define STK_HT_N_CT	150
-/*****************************************************************************/
-#define STK3310SA_PID		0x17
-#define STK3311SA_PID		0x1E
-#define STK3311WV_PID	0x1D
-#define STK335XX_PID        0x51
-
-/*****************************************************************************/
-
-#ifdef STK_ALS_FIR
-	#define STK_FIR_LEN	8
-	#define MAX_FIR_LEN 32
-	
-struct stk_data_filter {
-    u16 raw[MAX_FIR_LEN];
-    int sum;
-    int number;
-    int idx;
+enum PROX_STATE{
+    PS_UNKNOWN = -1,
+    PS_NEAR = 0,
+    PS_FAR = 1,
 };
-#endif
+
+bool stk_ps_swr = false;
+extern bool stk_als_swr;
 
 struct stk3x3x_data {
 	int		int_pin;
-	uint16_t ps_thd_h;
-	uint16_t ps_thd_l;
+	uint16_t stk_ps_thd_h;
+	uint16_t stk_ps_thd_l;
 #ifdef CALI_PS_EVERY_TIME	
 	uint16_t ps_high_thd_boot;
 	uint16_t ps_low_thd_boot;
 #endif	
 	int32_t ps_distance_last;
+    int32_t ps_report;
+    bool ps_need_report;
 	bool ps_enabled;
 	// bool re_enable_ps;
 	bool first_boot;
 #ifdef STK_TUNE0
 	uint16_t psa;
 	uint16_t psi;	
-	uint16_t psi_set;	
+	uint16_t psi_set;
+    uint16_t ps_raw;
+    bool ps_thd_update;
 	struct hrtimer ps_tune0_timer;	
 	struct workqueue_struct *stk_ps_tune0_wq;
     struct work_struct stk_ps_tune0_work;
@@ -151,13 +95,22 @@ struct stk3x3x_data {
 	int stk_max_min_diff;
 	int stk_lt_n_ct;
 	int stk_ht_n_ct;
+    int stk_ps_pocket;
+    int stk_h_hand;
+    int stk_smg_h;
+    int stk_smg_l;
+    uint16_t pocket_threshold;
+    uint32_t    ct_tracking_avg;
+    uint16_t    ct_tracking_cnt;
+    uint16_t    ct_tracking_min;
+    uint16_t    ct_tracking_max;
 #endif	
 	atomic_t	recv_reg;
 	uint8_t pid;
 	uint8_t	p_wv_r_bd_with_co;
 };
 
-struct stk3x3x_data *ps_data;
+struct stk3x3x_data *stk3x3x_ps_data;
 
 /*****************************************************************************/
 char stk3x3x_reg_map[] =
@@ -168,12 +121,21 @@ char stk3x3x_reg_map[] =
     0x03,
     0x04,
     0x05,
+    0x06,
+    0x07,
+    0x08,
+    0x09,
+    0x11,
+    0x12,
     0x4E,
     0xDB,
     0xA1,
+    0xA8,
+    0xA9,
+    0xAA,
 };
 
-static struct stk3x3x_platform_data stk3x3x_pfdata={ 
+static struct stk3x3x_platform_data stk3x3x_platform_data={ 
 //  .state_reg = 0x0,    /* disable all */ 
 //  .psctrl_reg = 0xB2,    /* ps_persistance=1, ps_gain=64X, PS_IT=0.391ms */ 
 //  .alsctrl_reg = 0x32, 	/* als_persistance=1, als_gain=64X, ALS_IT=100ms */
@@ -181,19 +143,23 @@ static struct stk3x3x_platform_data stk3x3x_pfdata={
 //  .wait_reg = 0x1F,    /* 50 ms */ 
 //  .pd_choice_reg =0x0F,
 //  .Again_reg = 0x14,  
-  .ps_thd_h = 2000, 
-  .ps_thd_l = 1500, 
+  .ps_thd_h = 2000,
+  .ps_thd_l = 1800,
+  .ps_pocket = 4800,
 
   //.int_pin = sprd_3rdparty_gpio_pls_irq,  
-  .transmittance = 500, 
-  .stk_max_min_diff = 200,
-  .stk_lt_n_ct = 100,
-  .stk_ht_n_ct = 150,  
+  .transmittance = 500,
+  .ps_max_min_diff = STK3A5X_MAX_MIN_DIFF,
+  .ps_ht_n_ct = STK_HT_N_CT,
+  .ps_lt_n_ct = STK_LT_N_CT,
+  .ps_hand_h = STK_PS_THD_HAND,
+  .ps_smg_h = STK_PS_SMG_H,
+  .ps_smg_l = STK_PS_SMG_L,
 };
 
 
 static int32_t stk3x3x_check_pid(struct i2c_client *client);
-static int stk_ps_tune_zero_init(struct i2c_client *client);
+static int stk3x3x_ps_tune_zero_init(struct i2c_client *client);
 
 
 /*****************************************************************************/
@@ -214,107 +180,72 @@ void stk3x3x_dump_reg(struct i2c_client *client)
     }
 }
 
+static void stk3x3x_get_ps_thd(struct i2c_client *client)
+{
+    int ret;
+    uint16_t ps_thdh, ps_thdl;
+    uint8_t tx_buf[4] ={0};
+
+    tx_buf[0] = STK_THDH1_PS_REG;
+    ret = sensor_rx_data(client, tx_buf, 4);
+
+    ps_thdh = tx_buf[0] << 8 | tx_buf[1];
+    ps_thdl = tx_buf[2] << 8 | tx_buf[3];
+    printk("%s:ps_thdh=%d, ps_thdl=%d!!\n",__func__, ps_thdh, ps_thdl);
+}
 
 static int32_t stk3x3x_set_ps_thd(struct i2c_client *client, uint16_t thd_h, uint16_t thd_l)
-{	
-	unsigned char val[2];
-	int ret;
-	val[0] = (thd_h & 0xFF00) >> 8;
-	val[1] = thd_h & 0x00FF;
+{
+    unsigned char val[5];
+    int ret;
+    val[0] = STK_THDH1_PS_REG;
+    val[1] = (thd_h & 0xFF00) >> 8;
+    val[2] = thd_h & 0x00FF;
+    val[3] = (thd_l & 0xFF00) >> 8;
+    val[4] = thd_l & 0x00FF;
 
-	ret = sensor_write_reg(client, STK_THDH1_PS_REG, val[0]);
-	if(ret < 0){
-		printk("%s: fail, ret=%d\n", __func__, ret);	
-	}
+    ret = sensor_tx_data(client, val, 5);
 
-	ret = sensor_write_reg(client, STK_THDH2_PS_REG, val[1]);
-	if(ret < 0){
-		printk("%s: fail, ret=%d\n", __func__, ret);	
-	}
+    if(ret < 0){
+        printk("%s: fail, ret=%d\n", __func__, ret);	
+    }
 
-    val[0] = (thd_l & 0xFF00) >> 8;
-	val[1] = thd_l & 0x00FF;
-
-	ret = sensor_write_reg(client, STK_THDH1_PS_REG, val[0]);
-	if(ret < 0){
-		printk("%s: fail, ret=%d\n", __func__, ret);	
-	}
-
-	ret = sensor_write_reg(client, STK_THDH2_PS_REG, val[1]);
-	if(ret < 0){
-		printk("%s: fail, ret=%d\n", __func__, ret);	
-	}
-	
-	return ret;
+    return ret;
 }
 
-/*
-static int32_t stk3x3x_set_ps_thd_l(struct i2c_client *client, uint16_t thd_l)
-{	
-	unsigned char val[2];
-	int ret;
-
-	val[0] = (thd_l & 0xFF00) >> 8;
-	val[1] = thd_l & 0x00FF;	
-
-	ret = sensor_write_reg(client, STK_THDL1_PS_REG, val[0]);
-	if(ret < 0){
-		printk("%s: fail, ret=%d\n", __func__, ret);	
-	}
-
-	ret = sensor_write_reg(client, STK_THDL2_PS_REG, val[1]);
-	if(ret < 0){
-		printk("%s: fail, ret=%d\n", __func__, ret);	
-	}
-	
-	return ret;
+static void stk3x3x_ps_ct_tracking_rst(void)
+{
+    printk(KERN_INFO "%s in\n", __func__);
+    if(stk3x3x_ps_data->ct_tracking_cnt != 0) {
+        stk3x3x_ps_data->ct_tracking_avg = 0;
+        stk3x3x_ps_data->ct_tracking_max = 0;
+        stk3x3x_ps_data->ct_tracking_min = 0xFFFF;
+        stk3x3x_ps_data->ct_tracking_cnt = 0;
+    }
 }
- */
-#if 0
-static uint32_t stk3x3x_get_ps_reading(struct i2c_client *client, u16 *data)
- {	 
-	 unsigned char value[2];
-	 int err = 0;
 
-	 value[0] = sensor_read_reg(client, STK_DATA1_PS_REG);
-	 if(value[0] < 0){
-		goto EXIT_ERR;
-	 }
-
-	 value[1] = sensor_read_reg(client, STK_DATA2_PS_REG);
-	 if(value[1] < 0){
-		goto EXIT_ERR;
-	 }
-
-	 *data = ((value[0]<<8) | value[1]);
-	 return 0; 
-
-EXIT_ERR:
-	printk("stk3x3x_read_ps fail\n");
-	return err;
- }
- #endif
-
-static int stk_proximity_sensor_active(struct i2c_client *client, int enable, int rate)
+static int stk3x3x_ps_active(struct i2c_client *client, int enable, int rate)
 {
 	struct sensor_private_data *sensor =
 	    (struct sensor_private_data *) i2c_get_clientdata(client);	
 	int result = 0;
+    char reg_buf = 0;
+    
 	// u16 ps_code;
 #ifdef STK_DEBUG_PRINTF	
-	printk("%s init proc = %d\n", __func__, (ps_data->tune_zero_init_proc ? 1 : 0));
+	printk("%s init proc = %d\n", __func__, (stk3x3x_ps_data->tune_zero_init_proc ? 1 : 0));
 #endif	
-	sensor->ops->ctrl_data = sensor_read_reg(client, sensor->ops->ctrl_reg);
+	reg_buf = sensor_read_reg(client, STK_STATE_REG);
+    reg_buf = (reg_buf & (~(STK_STATE_EN_PS_MASK | STK_STATE_EN_WAIT_MASK)));
 	
-	sensor->ops->ctrl_data &= ~(STK_STATE_EN_PS_MASK | STK_STATE_EN_WAIT_MASK); 
 	if(enable)
 	{
-		sensor->ops->ctrl_data |= STK_STATE_EN_PS_MASK;	
-		if(!(sensor->ops->ctrl_data & STK_STATE_EN_ALS_MASK))
-			sensor->ops->ctrl_data |= STK_STATE_EN_WAIT_MASK;			
+		reg_buf |= STK_STATE_EN_PS_MASK;
+		if(!(reg_buf & STK_STATE_EN_ALS_MASK))
+			reg_buf |= STK_STATE_EN_WAIT_MASK;
 	}
-	printk("%s:reg=0x%x,reg_ctrl=0x%x,enable=%d\n",__func__,sensor->ops->ctrl_reg, sensor->ops->ctrl_data, enable);
-	result = sensor_write_reg(client, sensor->ops->ctrl_reg, sensor->ops->ctrl_data);
+	printk("%s:reg_ctrl=0x%x,enable=%d\n",__func__, reg_buf, enable);
+	result = sensor_write_reg(client, STK_STATE_REG, reg_buf);
 	if(result)
 		printk("%s:fail to active sensor\n",__func__);
 
@@ -322,40 +253,172 @@ static int stk_proximity_sensor_active(struct i2c_client *client, int enable, in
 	if(enable)
 	{
 		usleep_range(4000, 5000);
-		sensor->ops->report(sensor->client);
+		//sensor->ops->report(sensor->client);//donot report when eable by david
 		
 		// stk3x3x_get_ps_reading(client, &ps_code);
-		// stk3x3x_set_ps_thd_h(client, ps_code + STK_HT_N_CT);
-		// stk3x3x_set_ps_thd_l(client, ps_code + STK_LT_N_CT);
+		// stk3x3x_set_stk_ps_thd_h(client, ps_code + STK_HT_N_CT);
+		// stk3x3x_set_stk_ps_thd_l(client, ps_code + STK_LT_N_CT);
+		stk3x3x_ps_data->stk_ps_thd_h = stk3x3x_platform_data.ps_thd_h;
+        stk3x3x_ps_data->stk_ps_thd_l = stk3x3x_platform_data.ps_thd_l;
+		result = stk3x3x_set_ps_thd(client, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+        if (result < 0){
+            printk("%s:fail set thd\n",__func__);
+        }
+        sensor->ops->report(sensor->client);//first report when eable by david
 #ifdef STK_DEBUG_PRINTF				
-		printk(KERN_INFO "%s: enable set thdh:%d, thdl:%d\n", __func__, ps_data->ps_thd_h, ps_data->ps_thd_l);
+        printk("%s: enable set thdh:%d, thdl:%d\n", __func__, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
 #endif	
-		stk3x3x_set_ps_thd(client, ps_data->ps_thd_h, ps_data->ps_thd_l);
-		//stk3x3x_set_ps_thd_h(client, ps_data->ps_thd_h);
-		//stk3x3x_set_ps_thd_l(client, ps_data->ps_thd_l);		
-	}
-	ps_data->ps_enabled = enable?true:false;
-	ps_data->ps_distance_last = 1;
-    //ps_data->tune_zero_init_proc = false; //david??
+	    stk3x3x_ps_data->ps_distance_last = PS_UNKNOWN;
+	} else {
+        stk3x3x_ps_data->ps_distance_last = PS_FAR;
+    }
+	stk3x3x_ps_data->ps_enabled = enable?true:false;
 
-	ps_data->psa = 0x0;
-	ps_data->psi = 0xFFFF;	
-	ps_data->psi_set = 0;
+    //stk3x3x_ps_data->tune_zero_init_proc = false; //david??
 
-	ps_data->stk_max_min_diff = stk3x3x_pfdata.stk_max_min_diff;
-	ps_data->stk_lt_n_ct = stk3x3x_pfdata.stk_lt_n_ct;
-	ps_data->stk_ht_n_ct = stk3x3x_pfdata.stk_ht_n_ct;
+	stk3x3x_ps_data->psa = 0x0;
+	stk3x3x_ps_data->psi = 0xFFFF;	
+	stk3x3x_ps_data->psi_set = 0;
+    stk3x3x_ps_data->pocket_threshold = 3000;
+    stk3x3x_ps_ct_tracking_rst();
 
-#ifdef STK_DEBUG_PRINTF				
-	printk(KERN_INFO "%s: ht:%d lt:%d max diff:%d\n", __func__, ps_data->stk_ht_n_ct, ps_data->stk_lt_n_ct, ps_data->stk_max_min_diff);
+	stk3x3x_ps_data->stk_max_min_diff = stk3x3x_platform_data.ps_max_min_diff;
+	stk3x3x_ps_data->stk_lt_n_ct = stk3x3x_platform_data.ps_lt_n_ct;
+	stk3x3x_ps_data->stk_ht_n_ct = stk3x3x_platform_data.ps_ht_n_ct;
+
+#ifdef STK_DEBUG_PRINTF
+	printk(KERN_INFO "%s: ht:%d lt:%d max diff:%d\n",
+	__func__,
+	stk3x3x_ps_data->stk_ps_thd_h,
+	stk3x3x_ps_data->stk_ps_thd_l,
+	stk3x3x_ps_data->stk_max_min_diff);
+    stk3x3x_dump_reg(client);
 #endif	
 	return result;
 
 }
 
+static void stk3x3x_ps_ct_tracking(uint16_t ps_raw_data)
+{
+    printk("%s in\n", __func__);
+    if (ps_raw_data > stk3x3x_ps_data->ct_tracking_max)
+        stk3x3x_ps_data->ct_tracking_max = ps_raw_data;//max
+
+    if (ps_raw_data < stk3x3x_ps_data->ct_tracking_min)
+        stk3x3x_ps_data->ct_tracking_min = ps_raw_data;//min
+}
+
+static void stk3x3x_ps_tune_fae(struct i2c_client *client )
+{
+    int ret = 0;
+    uint16_t ct_value;
+
+    if ((stk3x3x_ps_data->ps_debug_count % 12) == 9)
+        printk(KERN_INFO "stk fae:psi_set=%d, ps=%d, dis=%d\n",
+            stk3x3x_ps_data->psi_set, stk3x3x_ps_data->ps_raw, stk3x3x_ps_data->ps_distance_last);
+
+    if (stk3x3x_ps_data->psi_set != 0) {
+        if (stk3x3x_ps_data->ps_distance_last == PS_NEAR) {
+            if ((stk3x3x_ps_data->ps_raw - stk3x3x_ps_data->psi) > stk3x3x_ps_data->stk_h_hand) {
+                if (stk3x3x_ps_data->stk_ps_thd_h != (stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_smg_h)) {
+                    stk3x3x_ps_data->stk_ps_thd_h = stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_smg_h;
+                    stk3x3x_ps_data->stk_ps_thd_l = stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_smg_l;
+                    //stk3x3x_ps_data->psi_set = stk3x3x_ps_data->psi;
+
+                    ret = stk3x3x_set_ps_thd(client, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+                    if (ret < 0)
+                        printk(KERN_INFO "%s stk fae set1 fail\n", __func__);
+                    printk(KERN_INFO "stk fae:near set ht=%d, lt=%d\n",
+                        stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+                    stk3x3x_ps_data->ps_thd_update = true;
+                }
+            }
+            stk3x3x_ps_ct_tracking_rst();
+        } else { //far away
+            if (stk3x3x_ps_data->ps_thd_update) { //reset thd
+                stk3x3x_ps_data->ps_thd_update = false;
+                if ((stk3x3x_ps_data->ps_raw + stk3x3x_ps_data->stk_ht_n_ct) < stk3x3x_ps_data->stk_ps_thd_h) {
+                    stk3x3x_ps_data->psi = stk3x3x_ps_data->ps_raw;
+                    stk3x3x_ps_data->stk_ps_thd_h = stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_ht_n_ct;
+                    stk3x3x_ps_data->stk_ps_thd_l = stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_lt_n_ct;
+                    ret = stk3x3x_set_ps_thd(client,stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+                    if (ret < 0)
+                        printk(KERN_INFO "%s stk fae set2 fail\n", __func__);
+                    printk(KERN_INFO "stk fae:far update1 ht=%d, lt=%d\n",
+                        stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+                }else {
+                    printk(KERN_INFO "stk far update = 1 no set \n"); 
+                }
+            } else { //Tracking
+                printk("%s ct_traking in\n", __func__);
+                stk3x3x_ps_data->ct_tracking_avg += stk3x3x_ps_data->ps_raw;
+                stk3x3x_ps_ct_tracking(stk3x3x_ps_data->ps_raw);
+                stk3x3x_ps_data->ct_tracking_cnt ++;
+                printk("%s ct_traking raw= %d min = %d, max = %d, avg = %d cnt = %d\n",
+                    __func__,
+                    stk3x3x_ps_data->ps_raw,
+                    stk3x3x_ps_data->ct_tracking_min,
+                    stk3x3x_ps_data->ct_tracking_max,
+                    stk3x3x_ps_data->ct_tracking_avg,
+                    stk3x3x_ps_data->ct_tracking_cnt);
+                if(stk3x3x_ps_data->ct_tracking_cnt == STK3A5X_TRACKING_QUANTI) {
+                    stk3x3x_ps_data->ct_tracking_avg /= stk3x3x_ps_data->ct_tracking_cnt;
+                    ct_value = stk3x3x_ps_data->stk_ps_thd_h - stk3x3x_ps_data->stk_ht_n_ct;
+                    printk(KERN_INFO "%s ct traking ct_value = %d, word_data = %d\n", __func__, ct_value, stk3x3x_ps_data->ps_raw);
+                    if ((stk3x3x_ps_data->ct_tracking_avg < ct_value) &&
+                        ((ct_value - stk3x3x_ps_data->ct_tracking_avg) >= 5) &&
+                        ((stk3x3x_ps_data->ct_tracking_max - stk3x3x_ps_data->ct_tracking_min) <= STK3A5X_QUANTI_RANGE)) {
+                        stk3x3x_ps_data->stk_ps_thd_h = stk3x3x_ps_data->ct_tracking_avg + stk3x3x_ps_data->stk_ht_n_ct;
+                        stk3x3x_ps_data->stk_ps_thd_l = stk3x3x_ps_data->ct_tracking_avg + stk3x3x_ps_data->stk_lt_n_ct;
+                        stk3x3x_ps_data->psi = stk3x3x_ps_data->ct_tracking_avg;
+                        ret = stk3x3x_set_ps_thd(client, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+                        if (ret < 0)
+                            printk(KERN_INFO "%s fae set3 fail\n", __func__);
+                        printk(KERN_INFO "stk fae:far update2 ht=%d, lt=%d, ps variation = %d, avg=%d\n",
+                            stk3x3x_ps_data->stk_ps_thd_h,
+                            stk3x3x_ps_data->stk_ps_thd_l,
+                            (stk3x3x_ps_data->ct_tracking_max - stk3x3x_ps_data->ct_tracking_min),
+                            stk3x3x_ps_data->ct_tracking_avg);
+                    }
+                    stk3x3x_ps_ct_tracking_rst();
+                }
+            }
+        }
+    } else { //if donot update THHD, update psa/psi
+        if (stk3x3x_ps_data->ps_raw != 0) {
+            if (stk3x3x_ps_data->ps_raw > stk3x3x_ps_data->psa) {
+                stk3x3x_ps_data->psa = stk3x3x_ps_data->ps_raw;
+                printk(KERN_INFO "stk fae:update psa, psa=%d,psi=%d\n", stk3x3x_ps_data->psa, stk3x3x_ps_data->psi);
+            }
+            if (stk3x3x_ps_data->ps_raw < stk3x3x_ps_data->psi) {
+                stk3x3x_ps_data->psi = stk3x3x_ps_data->ps_raw; 
+                printk(KERN_INFO "stk fae:update psi, psa=%d,psi=%d\n", stk3x3x_ps_data->psa, stk3x3x_ps_data->psi);
+            }
+        }
+
+        if (stk3x3x_ps_data->psa > stk3x3x_ps_data->psi) {
+            if (stk3x3x_ps_data->psa - stk3x3x_ps_data->psi > STK3A5X_PS_DIFF ) {
+                if ((stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_ht_n_ct) > stk3x3x_ps_data->pocket_threshold) {
+                    printk(KERN_INFO "stk fae:in pocket ps=%d, thd=%d\n",
+                        stk3x3x_ps_data->ps_raw, stk3x3x_ps_data->pocket_threshold);
+                } else {
+                    stk3x3x_ps_data->stk_ps_thd_h = stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_ht_n_ct;
+                    stk3x3x_ps_data->stk_ps_thd_l = stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_lt_n_ct;
+                    stk3x3x_ps_data->psi_set = stk3x3x_ps_data->psi;
+                    ret = stk3x3x_set_ps_thd(client,stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+                    if (ret < 0)
+                        printk(KERN_INFO "%s fae set4 fail\n", __func__);
+                    printk(KERN_INFO "stk fae:set HT=%d, LT=%d\n",
+                        stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+                }
+            }
+        }
+    }
+}
+
 static int32_t stk3x3x_check_pid(struct i2c_client *client)
 {
-	char  reg_val;
+    char  reg_val;
 
     reg_val = sensor_read_reg(client, STK_PDT_ID_REG);
     if (reg_val != STK335XX_PID)
@@ -369,48 +432,40 @@ static int32_t stk3x3x_check_pid(struct i2c_client *client)
 }
 
 #ifdef STK_TUNE0	
-static int stk_ps_val(struct i2c_client *client)
+static int stk3x3x_ps_val(struct i2c_client *client)
 {
-	int mode;
-	int32_t word_data, lii;	
-	unsigned char value[4];
+	int32_t word_data1, word_data2, word_data3, word_data4;	
+	unsigned char value[8];
 	int ret;
 	
-	value[0] = 0x20;
-	ret = sensor_rx_data(client, value, 4);	
+	value[0] = STK_PSOFF_REG;
+	ret = sensor_rx_data(client, value, 8);	
 	if(ret)
 	{
 		printk("%s:line=%d,error=%d\n",__func__,__LINE__, ret);
 		return ret;
 	}
-	word_data = (value[0]<<8) | value[1];	
-	word_data += ((value[2]<<8) | value[3]);	
-/*	
-	mode = (stk3x3x_pfdata.psctrl_reg) & 0x3F;
-	if(mode == 0x30)	
-		lii = 100;	
-	else if (mode == 0x31)
-		lii = 200;		
-	else if (mode == 0x32)
-		lii = 400;		
-	else if (mode == 0x33)
-		lii = 800;	
-	else
+
+    word_data1 = ((value[0]<<8) | value[1]);
+    word_data2 = ((value[2]<<8) | value[3]);
+    word_data3 = ((value[4]<<8) | value[5]);
+    word_data4 = ((value[6]<<8) | value[7]);
+
+	if((word_data1 > STK_THD_SL) || (word_data2 > STK_THD_SL) || (word_data3 > STK_THD_SL) || (word_data4 > STK_THD_SL))
 	{
-		printk(KERN_ERR "%s: unsupported PS_IT(0x%x)\n", __func__, mode);
-		return -1;
-	}
-	*/
-	lii = 100;	
-	if(word_data > lii)
-	{
-		printk(KERN_INFO "%s: word_data=%d, lii=%d\n", __func__, word_data, lii);	
+		printk(KERN_INFO "%s: word_data=%d %d %d %d, lii=%d\n",
+            __func__,
+            word_data1,
+            word_data2,
+            word_data3,
+            word_data4,
+            STK_THD_SL); 
 		return 0xFFFF;	
 	}
 	return 0;
 }	
 
-static int stk_ps_tune_zero_final(struct i2c_client *client)
+static int stk3x3x_ps_tune_zero_final(struct i2c_client *client)
 {
 	int ret;
 	int value;
@@ -435,7 +490,7 @@ static int stk_ps_tune_zero_final(struct i2c_client *client)
 
 	if(!(value & STK_STATE_EN_ALS_MASK))
 		value |= STK_STATE_EN_WAIT_MASK;
-	if(ps_data->ps_enabled)
+	if(stk3x3x_ps_data->ps_enabled)
 		value |= STK_STATE_EN_PS_MASK;
 	
 	ret = sensor_write_reg(client, STK_STATE_REG, value);
@@ -445,67 +500,63 @@ static int stk_ps_tune_zero_final(struct i2c_client *client)
 		return ret;
 	}
 	
-	if(ps_data->data_count == -1)
+	if(stk3x3x_ps_data->data_count == -1)
 	{
 		printk(KERN_INFO "%s: exceed limit\n", __func__);
-        ps_data->tune_zero_init_proc = false;
+        stk3x3x_ps_data->tune_zero_init_proc = false;
 		return 0;
 	}
 	
-	ps_data->psa = ps_data->ps_stat_data[0];
-	ps_data->psi = ps_data->ps_stat_data[2];	
-	ps_data->ps_thd_h = ps_data->ps_stat_data[1] + ps_data->stk_ht_n_ct;
-	ps_data->ps_thd_l = ps_data->ps_stat_data[1] + ps_data->stk_lt_n_ct;
-    stk3x3x_set_ps_thd(client, ps_data->ps_thd_h, ps_data->ps_thd_l);
-	printk(KERN_INFO "%s: set HT=%d,LT=%d\n", __func__, ps_data->ps_thd_h,  ps_data->ps_thd_l);
+	stk3x3x_ps_data->psa = stk3x3x_ps_data->ps_stat_data[0];
+	stk3x3x_ps_data->psi = stk3x3x_ps_data->ps_stat_data[2];	
+	stk3x3x_ps_data->stk_ps_thd_h = stk3x3x_ps_data->ps_stat_data[1] + stk3x3x_ps_data->stk_ht_n_ct;
+	stk3x3x_ps_data->stk_ps_thd_l = stk3x3x_ps_data->ps_stat_data[1] + stk3x3x_ps_data->stk_lt_n_ct;
+    stk3x3x_set_ps_thd(client, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+	printk(KERN_INFO "%s: set HT=%d,LT=%d\n", __func__, stk3x3x_ps_data->stk_ps_thd_h,  stk3x3x_ps_data->stk_ps_thd_l);
     
 	return 0;
 }
 	
-static int32_t stk_tune_zero_get_ps_data(struct i2c_client *client, int ps_adc)
+static int32_t stk3x3x_tune_zero_get_stk3x3x_ps_data(struct i2c_client *client, int ps_adc)
 {
 	int ret;
 	
-	ret = stk_ps_val(client);	
+	ret = stk3x3x_ps_val(client);	
 	if(ret == 0xFFFF)
 	{
-		ps_data->data_count = -1;
-		stk_ps_tune_zero_final(client);
+		stk3x3x_ps_data->data_count = -1;
+		stk3x3x_ps_tune_zero_final(client);
 		return 0;
 	}
-	printk(KERN_INFO "%s: ps_adc #%d=%d\n", __func__, ps_data->data_count, ps_adc);
-	ps_data->ps_stat_data[1] +=  ps_adc;			
-	if(ps_adc > ps_data->ps_stat_data[0])
-		ps_data->ps_stat_data[0] = ps_adc;
-	if(ps_adc < ps_data->ps_stat_data[2])
-		ps_data->ps_stat_data[2] = ps_adc;						
-	ps_data->data_count++;	
+	printk(KERN_INFO "%s: ps_adc #%d=%d\n", __func__, stk3x3x_ps_data->data_count, ps_adc);
+	stk3x3x_ps_data->ps_stat_data[1] +=  ps_adc;			
+	if(ps_adc > stk3x3x_ps_data->ps_stat_data[0])
+		stk3x3x_ps_data->ps_stat_data[0] = ps_adc;
+	if(ps_adc < stk3x3x_ps_data->ps_stat_data[2])
+		stk3x3x_ps_data->ps_stat_data[2] = ps_adc;						
+	stk3x3x_ps_data->data_count++;	
 	
-	if(ps_data->data_count == 5)
+	if(stk3x3x_ps_data->data_count == 5)
 	{
-		ps_data->ps_stat_data[1]  /= ps_data->data_count;			
-		stk_ps_tune_zero_final(client);
-        ps_data->tune_zero_init_proc = false;
+		stk3x3x_ps_data->ps_stat_data[1]  /= stk3x3x_ps_data->data_count;			
+		stk3x3x_ps_tune_zero_final(client);
+        stk3x3x_ps_data->tune_zero_init_proc = false;
 	}		
 	
 	return 0;
 }
 
-static int stk_ps_tune_zero_init(struct i2c_client *client)
+static int stk3x3x_ps_tune_zero_init(struct i2c_client *client)
 {
-	struct sensor_private_data *sensor =
-	    (struct sensor_private_data *) i2c_get_clientdata(client);		
-	int32_t result = 0;
-	
-	ps_data->psa = 0x0;
-	ps_data->psi = 0xFFFF;	
-	ps_data->psi_set = 0;	
-	ps_data->ps_stat_data[0] = 0;
-	ps_data->ps_stat_data[2] = 0xFFFF;
-	ps_data->ps_stat_data[1] = 0;
-	ps_data->data_count = 0;
-	ps_data->ps_debug_count = 0;
-	ps_data->tune_zero_init_proc = true;	
+	stk3x3x_ps_data->psa = 0x0;
+	stk3x3x_ps_data->psi = 0xFFFF;	
+	stk3x3x_ps_data->psi_set = 0;	
+	stk3x3x_ps_data->ps_stat_data[0] = 0;
+	stk3x3x_ps_data->ps_stat_data[2] = 0xFFFF;
+	stk3x3x_ps_data->ps_stat_data[1] = 0;
+	stk3x3x_ps_data->data_count = 0;
+	stk3x3x_ps_data->ps_debug_count = 0;
+	stk3x3x_ps_data->tune_zero_init_proc = true;
 
 	/*
 	sensor->ops->ctrl_data = sensor_read_reg(client, sensor->ops->ctrl_reg);
@@ -526,109 +577,120 @@ static int stk_ps_tune_zero_init(struct i2c_client *client)
 	return 0;	
 }
 
-static int stk_ps_tune_zero_func_fae(struct i2c_client *client, int word_data)
+static void stk3x3x_ps_get_min_max(struct i2c_client *client, int word_data)
 {
-	int ret, diff;
-#ifdef STK_DEBUG_PRINTF	
-	int cnt = 0;
-	int ps_reg[0x22];
-    unsigned char buffer[4] = {0};
-    unsigned int thhd_h = 0, thhd_l = 0;
-#endif
+    if(word_data > stk3x3x_ps_data->psa)
+    {
+        stk3x3x_ps_data->psa = word_data;
+        printk("%s: update psa: psa=%d,psi=%d\n", __func__, stk3x3x_ps_data->psa, stk3x3x_ps_data->psi);
+    }
+    if(word_data < stk3x3x_ps_data->psi)
+    {
+        stk3x3x_ps_data->psi = word_data;	
+        printk("%s: update psi: psa=%d,psi=%d\n", __func__, stk3x3x_ps_data->psa, stk3x3x_ps_data->psi);	
+    }
+}
+static int stk3x3x_ps_tune_zero_func_fae(struct i2c_client *client, int raw_data)
+{
+	int ret, ps_diff;
 
-    ps_data->ps_debug_count ++;
-    if(ps_data->ps_debug_count > 50000)
-	    ps_data->ps_debug_count = 0;
+    stk3x3x_ps_data->ps_debug_count ++;
+    if(stk3x3x_ps_data->ps_debug_count > 50000)
+	    stk3x3x_ps_data->ps_debug_count = 0;
     
-//	if(ps_data->psi_set || !(ps_data->ps_enabled))
+//	if(stk3x3x_ps_data->psi_set || !(stk3x3x_ps_data->ps_enabled))
 //		return 0;
 	
-	ret = stk_ps_val(client);	
+	ret = stk3x3x_ps_val(client);	
 	if(ret == 0)
-	{				
-		if(word_data == 0)
+	{
+		if(raw_data == 0)
 		{
 			//printk(KERN_ERR "%s: incorrect word data (0)\n", __func__);
 			return 0xFFFF;
 		}
-		
-		if(word_data > ps_data->psa)
-		{
-			ps_data->psa = word_data;
-			printk("%s: update psa: psa=%d,psi=%d\n", __func__, ps_data->psa, ps_data->psi);
-		}
-		if(word_data < ps_data->psi)
-		{
-			ps_data->psi = word_data;	
-			printk("%s: update psi: psa=%d,psi=%d\n", __func__, ps_data->psa, ps_data->psi);	
-		}	
+		stk3x3x_ps_get_min_max(client, raw_data);
 	}	
-	diff = ps_data->psa - ps_data->psi;
+	ps_diff = stk3x3x_ps_data->psa - stk3x3x_ps_data->psi;
 #ifdef STK_DEBUG_PRINTF				
-	printk("%s: diff:%d  psa:%d, psi:%d max diff:%d\n", __func__, diff, ps_data->psa, ps_data->psi, ps_data->stk_max_min_diff);
-    if(ps_data->ps_debug_count % 10 == 1)
+    if(stk3x3x_ps_data->ps_debug_count % 10 == 1)
         stk3x3x_dump_reg(client);
 
-#endif	
-	if(diff > ps_data->stk_max_min_diff)
-	{
-		ps_data->psi_set = ps_data->psi;
-		ps_data->ps_thd_h = ps_data->psi + ps_data->stk_ht_n_ct;
-		ps_data->ps_thd_l = ps_data->psi + ps_data->stk_lt_n_ct;
-#ifdef STK_DEBUG_PRINTF				
-		printk("%s: tune0 thd_h:%d	thd_l:%d psa:%d psi: %d\n",
-		    __func__, ps_data->ps_thd_h, ps_data->ps_thd_l, ps_data->psa, ps_data->psi);
 #endif
-
-#ifdef STK_DEBUG_PRINTF
-        buffer[0] = 0x6;
-        ret = sensor_rx_data(client, buffer, 4);
-        if(ret)
-        {
-            printk("%s:line=%d,error\n",__func__,__LINE__);
-            return ret;
+    if (stk3x3x_ps_data->psi_set != 0) {
+        if(stk3x3x_ps_data->ps_distance_last == PS_NEAR) {
+            if((raw_data - stk3x3x_ps_data->psi) > stk3x3x_ps_data->stk_h_hand) {
+                if(stk3x3x_ps_data->stk_ps_thd_h != (stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_smg_h)){
+                    stk3x3x_ps_data->stk_ps_thd_h = stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_smg_h;
+                    stk3x3x_ps_data->stk_ps_thd_l = stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_smg_l;
+                    ret = stk3x3x_set_ps_thd(client, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+                    if (ret) {
+                        printk("%s:line=%d,ps set thd error\n", __func__, __LINE__);
+                    }
+                    printk("%s:ps NEAR update thd H=%d L=%d\n", __func__, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+                    stk3x3x_ps_data->ps_thd_update = true;
+                }
+            }
+        } else { //ps far
+            if(stk3x3x_ps_data->ps_thd_update == true) {
+                stk3x3x_ps_data->ps_thd_update = false;
+                if((raw_data + stk3x3x_ps_data->stk_ht_n_ct) < stk3x3x_ps_data->stk_ps_thd_h){
+                    stk3x3x_ps_data->psi = raw_data;
+                    stk3x3x_ps_data->stk_ps_thd_h = stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_ht_n_ct;
+                    stk3x3x_ps_data->stk_ps_thd_l = stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_lt_n_ct;
+                    ret = stk3x3x_set_ps_thd(client, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+                    if(ret){
+                        printk("%s:line=%d,ps set thd1 error\n", __func__, __LINE__);
+                    }
+                    printk("%s:,ps set thd1 H:%d L:%d psi:%d\n",
+                        __func__, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l, stk3x3x_ps_data->psi);
+                } else {
+                    printk("%s:stk3a5x far update = 1 no set\n", __func__);
+                }
+            } else { //tracking
+                if((raw_data > 0) && (raw_data < (stk3x3x_ps_data->stk_ps_thd_h - stk3x3x_ps_data->stk_ps_thd_h - 5))){
+                    stk3x3x_ps_data->psi = raw_data;
+                    stk3x3x_ps_data->stk_ps_thd_h = stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_ht_n_ct;
+                    stk3x3x_ps_data->stk_ps_thd_l = stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_lt_n_ct;
+                    ret = stk3x3x_set_ps_thd(client, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+                    if(ret){
+                        printk("%s:line=%d,ps set thd2 error\n", __func__, __LINE__);
+                    }
+                    printk("%s:,ps set thd2 H:%d L:%d psi:%d\n",
+                        __func__, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l, stk3x3x_ps_data->psi);
+                }
+            }
         }
-        thhd_h = (buffer[0] << 8) | buffer[1];
-        thhd_l = (buffer[2] << 8) | buffer[3];
-		printk("%s: before thhd_h=%d, thhd_l=%d\n", __func__, thhd_h, thhd_l);
-#endif
-        stk3x3x_set_ps_thd(client, ps_data->ps_thd_h, ps_data->ps_thd_l);
-		//stk3x3x_set_ps_thd_h(client, ps_data->ps_thd_h);
-		//stk3x3x_set_ps_thd_l(client, ps_data->ps_thd_l);
-
-#ifdef STK_DEBUG_PRINTF	
-        buffer[0] = 0x6;
-        ret = sensor_rx_data(client, buffer, 4);
-        if(ret)
-        {
-            printk("%s:line=%d,error\n",__func__,__LINE__);
-            return ret;
+    } else { //stk3x3x_ps_data->psi_set !== 0
+        if (ps_diff > stk3x3x_ps_data->stk_max_min_diff) {
+            if (ps_diff > stk3x3x_ps_data->stk_ps_pocket) {
+                printk("%s: is pocket mode!raw = %d diff = %d PK = %d\n",
+                    __func__,raw_data, ps_diff, stk3x3x_ps_data->stk_ps_pocket);
+            }
+            stk3x3x_ps_data->psi_set = stk3x3x_ps_data->psi;
+            stk3x3x_ps_data->stk_ps_thd_h = stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_ht_n_ct;
+            stk3x3x_ps_data->stk_ps_thd_l = stk3x3x_ps_data->psi + stk3x3x_ps_data->stk_lt_n_ct;
+            ret = stk3x3x_set_ps_thd(client, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+            if(ret){
+                printk("%s:line=%d,ps set thd2 error\n", __func__, __LINE__);
+            }
+            printk("%s:,ps set thd2 H:%d L:%d\n", __func__, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
         }
-        thhd_h = (buffer[0] << 8) | buffer[1];
-        thhd_l = (buffer[2] << 8) | buffer[3];
-
-		printk(KERN_INFO "%s: FAE tune0 found thd_h:%d  thd_l:%d  raw_data=%d\n",
-            __func__, ps_data->ps_thd_h, ps_data->ps_thd_l, word_data);
-#endif
-	}
-	
+    }
+    printk("%s:raw:%d H:%d L:%d psi:%d\n",
+        __func__, raw_data, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l, stk3x3x_ps_data->psi);
 	return 0;
 }	
 #endif
 
-static int stk_ps_report(struct i2c_client *client, int ps)
+/*
+static int stk3x3x_ps_distance_last(struct i2c_client *client, int ps)
 {
 	struct sensor_private_data *sensor =
 	    (struct sensor_private_data *) i2c_get_clientdata(client);	
 	int result = 0;
 	char buffer[2] = {0};	
 	int reg_flag = 0;
-/*	
-#ifdef STK_DEBUG_PRINTF	
-	int cnt = 0;
-	int ps_reg[0x22];	
-#endif
-*/
 
 	buffer[0] = STK_FLAG_REG;
 	result = sensor_rx_data(client, buffer, 1);	
@@ -640,43 +702,32 @@ static int stk_ps_report(struct i2c_client *client, int ps)
 	reg_flag = buffer[0];
 	reg_flag = (reg_flag & 0x1);
 
-	ps_data->ps_distance_last = reg_flag ? 1:0;
-/*
-#ifdef STK_DEBUG_PRINTF	
-	cnt = 0x6;
-	ps_reg[cnt] = sensor_read_reg(client, cnt);
-	cnt = 0x7;
-	ps_reg[cnt] = sensor_read_reg(client, cnt);
-	cnt = 0x8;
-	ps_reg[cnt] = sensor_read_reg(client, cnt);
-	cnt = 0x9;
-	ps_reg[cnt] = sensor_read_reg(client, cnt);	
+	stk3x3x_ps_data->ps_distance_last = reg_flag ? PS_FAR:PS_NEAR;
 
-	printk(KERN_INFO "%s: [0x06/0x07]%d, %d  [0x08/0x09]%d, %d  \n", __func__, ps_reg[0x6], ps_reg[0x7], ps_reg[0x8], ps_reg[0x9]);
-#endif
-*/
-	if(ps > ps_data->ps_thd_h){
-		ps_data->ps_distance_last = 0;
-	}else if(ps < ps_data->ps_thd_l){
-		ps_data->ps_distance_last = 1;
+
+	if(ps > stk3x3x_ps_data->stk_ps_thd_h){
+		stk3x3x_ps_data->ps_distance_last = PS_NEAR;
+	}else if(ps < stk3x3x_ps_data->stk_ps_thd_l){
+		stk3x3x_ps_data->ps_distance_last = PS_FAR;
 	}
 
-	input_report_abs(sensor->input_dev, ABS_DISTANCE, ps_data->ps_distance_last);
-	input_sync(sensor->input_dev);
-	printk("%s:ps=%d,flag=%d\n",__func__, ps,reg_flag);
-
+	printk("%s:ps=%d,NF=%d\n",__func__, ps, stk3x3x_ps_data->ps_report);
+    if (stk3x3x_ps_data->ps_need_report) {
+    	input_report_abs(sensor->input_dev, ABS_DISTANCE, stk3x3x_ps_data->ps_report);
+    	input_sync(sensor->input_dev);
+    }
 	return 0;
 }
+*/
 
-static int stk_proximity_sensor_init(struct i2c_client *client)
+static int stk3x3x_ps_init(struct i2c_client *client)
 {
 	int res = 0, i, reg_num;
-	char value;
 	 
 	printk("%s init ...\n", __func__);
 
-	ps_data = kzalloc(sizeof(struct stk3x3x_data),GFP_KERNEL);
-	if(!ps_data)
+	stk3x3x_ps_data = kzalloc(sizeof(struct stk3x3x_data),GFP_KERNEL);
+	if(!stk3x3x_ps_data)
 	{
 		printk(KERN_ERR "%s: failed to allocate stk3x3x_data\n", __func__);
 		return -ENOMEM;
@@ -688,20 +739,22 @@ static int stk_proximity_sensor_init(struct i2c_client *client)
             printk(KERN_ERR "%s: stk3x3x_check_pid fail\n", __func__);
             goto EXIT_ERR;
         }
-    
-        res = sensor_write_reg(client, STK_SW_RESET_REG, 0x0);
-        if(res < 0)
-        {   
-            printk(KERN_ERR "%s: stk3x3x SWR fail\n", __func__);
-            goto EXIT_ERR;
+        if(!stk_als_swr) {
+            res = sensor_write_reg(client, STK_SW_RESET_REG, 0x0);
+            if(res < 0)
+            {   
+                printk(KERN_ERR "%s: stk3x3x SWR fail\n", __func__);
+                goto EXIT_ERR;
+            }
+            
+            usleep_range(13000, 15000); 
+            stk_ps_swr = true;
+            stk_ps_swr = true;
         }
-        
-        usleep_range(13000, 15000); 
-        
-        reg_num = sizeof(stk3x3x_config_table)/sizeof(stk3x3x_config_table[0]);
+        reg_num = sizeof(stk3x3x_ps_config_table)/sizeof(stk3x3x_ps_config_table[0]);
         for(i=0;i<reg_num;i++)
         {
-            res = sensor_write_reg(client, stk3x3x_config_table[i].address,stk3x3x_config_table[i].value);
+            res = sensor_write_reg(client, stk3x3x_ps_config_table[i].address,stk3x3x_ps_config_table[i].value);
             //printk("%s init write_reg 0x%x 0x%x %d\n", __func__, stk3x3x_config_table[i].address, stk3x3x_config_table[i].value, res);
             if(res < 0)
                 {
@@ -710,93 +763,142 @@ static int stk_proximity_sensor_init(struct i2c_client *client)
                 }
         }
 
-	//stk3x3x_set_ps_thd_h(client, stk3x3x_pfdata.ps_thd_h);	
-	//stk3x3x_set_ps_thd_l(client, stk3x3x_pfdata.ps_thd_l);	
-    //stk3x3x_dump_reg(client);
+    stk3x3x_dump_reg(client);
 		
 #ifdef STK_TUNE0
-	stk_ps_tune_zero_init(client);
+	stk3x3x_ps_tune_zero_init(client);
 #endif	
 
-#ifdef STK_ALS_FIR
-	memset(&ps_data->fir, 0x00, sizeof(ps_data->fir));  
-	atomic_set(&ps_data->firlength, STK_FIR_LEN);	
-#endif
-	atomic_set(&ps_data->recv_reg, 0);  	
-	ps_data->ps_enabled = false;
-	ps_data->ps_distance_last = 1;	
-	ps_data->stk_max_min_diff = stk3x3x_pfdata.stk_max_min_diff;
-	ps_data->stk_lt_n_ct = stk3x3x_pfdata.stk_lt_n_ct;
-	ps_data->stk_ht_n_ct = stk3x3x_pfdata.stk_ht_n_ct;
-	ps_data->ps_thd_h = stk3x3x_pfdata.ps_thd_h;
-	ps_data->ps_thd_l = stk3x3x_pfdata.ps_thd_l;
-    stk3x3x_set_ps_thd(client, ps_data->ps_thd_h, ps_data->ps_thd_l);
-    printk("%s init set ps_thd_h=%d ps_thd_l=%d\n", __func__, ps_data->ps_thd_h, ps_data->ps_thd_l);
+	atomic_set(&stk3x3x_ps_data->recv_reg, 0);
+    stk3x3x_ps_data->ps_thd_update = false;
+	stk3x3x_ps_data->ps_enabled = false;
+	stk3x3x_ps_data->ps_distance_last = PS_FAR;
+	stk3x3x_ps_data->stk_max_min_diff = stk3x3x_platform_data.ps_max_min_diff;
+	stk3x3x_ps_data->stk_lt_n_ct = stk3x3x_platform_data.ps_lt_n_ct;
+	stk3x3x_ps_data->stk_ht_n_ct = stk3x3x_platform_data.ps_ht_n_ct;
+	stk3x3x_ps_data->stk_ps_thd_h = stk3x3x_platform_data.ps_thd_h;
+	stk3x3x_ps_data->stk_ps_thd_l = stk3x3x_platform_data.ps_thd_l;
+    stk3x3x_ps_data->stk_ps_pocket = stk3x3x_platform_data.ps_pocket;
+    stk3x3x_ps_data->stk_h_hand = stk3x3x_platform_data.ps_hand_h;
+    stk3x3x_ps_data->stk_smg_h = stk3x3x_platform_data.ps_smg_h;
+    stk3x3x_ps_data->stk_smg_l = stk3x3x_platform_data.ps_smg_l;
+    stk3x3x_set_ps_thd(client, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
+    printk("%s init set stk_ps_thd_h=%d stk_ps_thd_l=%d\n", __func__, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l);
 	printk("%s init successful \n", __func__);
 	return 0;
-	
 	
 EXIT_ERR:
 	printk(KERN_ERR "stk init fail dev: %d\n", res);
 	return res;
-
-
 }
 
-static int stk_proximity_sensor_report_value(struct i2c_client *client)
+static int stk3x3x_clr_int(struct i2c_client *client)
+{
+    int ret = 0;
+    uint8_t flag;
+
+    printk("%s in\n", __func__);
+    flag = sensor_read_reg(client, STK_FLAG_REG);
+    if (flag < 0)
+        goto err_out;
+
+    flag = flag & ((~STK_FLG_PSINT_MASK) & (~STK_FLG_ALSINT_MASK));
+    ret = sensor_write_reg(client, STK_FLAG_REG, flag);
+    if (ret < 0)
+        goto err_out;
+
+    return ret;
+err_out:
+    printk("%s fail\n", __func__);
+    return ret;
+}
+
+static void stk3x3x_get_ps_status(struct i2c_client *client)
+{
+    int ret;
+    int ps_flag;
+    uint8_t tx_buf[3] = {0};
+
+    tx_buf[0] = STK_FLAG_REG;
+    ret = sensor_rx_data(client, tx_buf, 3);
+    if(ret)
+    {
+        printk("%s:line=%d, get data error!!\n",__func__,__LINE__);
+    }
+    
+    ps_flag = tx_buf[0] & 0x01;
+	stk3x3x_ps_data->ps_raw = tx_buf[1] << 8 | tx_buf[2];
+
+    if(stk3x3x_ps_data->ps_debug_count % 10 == 1){
+        stk3x3x_get_ps_thd(client);
+    }
+
+    if (ps_flag == 1) {
+        if (stk3x3x_ps_data->ps_distance_last != PS_FAR){
+            stk3x3x_ps_data->ps_need_report = true;
+        }
+        stk3x3x_ps_data->ps_report = PS_FAR;
+    } else if (ps_flag == 0) {
+        if (stk3x3x_ps_data->ps_distance_last != PS_NEAR){
+            stk3x3x_ps_data->ps_need_report = true;
+        }
+        stk3x3x_ps_data->ps_report = PS_NEAR;
+    } else {
+        printk( "stk get_ps_status error status: %d\n", tx_buf[0]);	
+    }
+    printk("%s stk cur psdata=%d, flag=0x%x, dis=%d\n",
+        __func__, stk3x3x_ps_data->ps_raw, tx_buf[0], stk3x3x_ps_data->ps_report);
+
+/*
+//clr int 
+    if(stk3x3x_ps_data->ps_need_report == true) {
+        ret = stk3x3x_clr_int(client);
+        if (ret < 0)
+           printk( "stk clr int error: \n"); 
+    }
+*/
+}
+
+
+static int stk3x3x_ps_distance_last_value(struct i2c_client *client)
 {
 	struct sensor_private_data *sensor =
 	    (struct sensor_private_data *) i2c_get_clientdata(client);	
 	int result = 0;
-	int value = 0;
-    char ps_flag = 0;
-	char buffer[2] = {0};	
+
 	//printk("%s in\n", __func__);
-	
+	stk3x3x_ps_data->ps_debug_count++;
+    if(stk3x3x_ps_data->ps_debug_count > 50000)
+	    stk3x3x_ps_data->ps_debug_count = 0;
 	if(sensor->ops->read_len < 2)	//sensor->ops->read_len = 1
 	{
 		printk("%s:lenth is error,len=%d\n",__func__,sensor->ops->read_len);
 		return -1;
 	}
-	
-	ps_flag = sensor_read_reg(client, STK_FLAG_REG);
-	if(ps_flag < 0)
-	{
-		printk("%s read STK_FLAG_REG, ret=%d\n", __func__, ps_flag);
-		return ps_flag;
+
+    stk3x3x_get_ps_status(client);
+    stk3x3x_ps_data->ps_distance_last = stk3x3x_ps_data->ps_report;
+    if(stk3x3x_ps_data->ps_debug_count % 20 == 1) {
+        stk3x3x_dump_reg(client);
+    }
+	if(stk3x3x_ps_data->ps_raw < 0) {
+		printk("%s: ps_rawdata < 0 == %d\n",__func__, stk3x3x_ps_data->ps_raw);
+		return -1;
 	}
-	if(!(ps_flag & STK_FLG_PSDR_MASK))
-    {
-        printk("%s ps data not ready flag=%d\n", __func__, ps_flag);
-		return 0;
-     }
-	memset(buffer, 0, 2);
-	buffer[0] = sensor->ops->read_reg;
-	result = sensor_rx_data(client, buffer, sensor->ops->read_len);	
-	if(result)
-	{
-		printk("%s:line=%d,error\n",__func__,__LINE__);
-		return result;
-	}
-	value = (buffer[0] << 8) | buffer[1];
-	if(value < 0) {
-#ifdef STK_DEBUG_PRINTF
-		printk("%s: ps_rawdata < 0 == %d\n",__func__,value);
-#endif				
-		return result;
-	}
-	
-#ifdef STK_DEBUG_PRINTF
-	printk("%s: ps_rawdata == %d status= 0x%x \n",__func__,value, ps_flag);
-#endif		
 #ifdef STK_TUNE0	
-	if(ps_data->tune_zero_init_proc)
-		stk_tune_zero_get_ps_data(client, value);
+	if(stk3x3x_ps_data->tune_zero_init_proc)
+		result = stk3x3x_tune_zero_get_stk3x3x_ps_data(client, stk3x3x_ps_data->ps_raw);
 	else
-		stk_ps_tune_zero_func_fae(client, value);	
+        stk3x3x_ps_tune_fae(client);
+		//stk3x3x_ps_tune_zero_func_fae(client, ps_raw);	
 #endif	
-	stk_ps_report(client, value);
-	return result;
+	//result = stk3x3x_ps_distance_last(client, stk3x3x_ps_data->ps_raw);
+    if (stk3x3x_ps_data->ps_need_report) {
+    	input_report_abs(sensor->input_dev, ABS_DISTANCE, stk3x3x_ps_data->ps_report);
+    	input_sync(sensor->input_dev);
+    }
+
+    return result;
 }
 
 struct sensor_operate proximity_stk3x3x_ops = {
@@ -813,9 +915,9 @@ struct sensor_operate proximity_stk3x3x_ops = {
 	.int_status_reg 	= SENSOR_UNKNOW_DATA,			//intterupt status register
 	.range				= {0,1},			//range
 	.trig				= IRQF_TRIGGER_LOW | IRQF_ONESHOT | IRQF_SHARED,		
-	.active				= stk_proximity_sensor_active,	
-	.init				= stk_proximity_sensor_init,
-	.report				= stk_proximity_sensor_report_value,
+	.active				= stk3x3x_ps_active,	
+	.init				= stk3x3x_ps_init,
+	.report				= stk3x3x_ps_distance_last_value,
 	// int 	brightness[2];//backlight min_brightness max_brightness 
 	// int int_ctrl_reg;
 	// int (*suspend)(struct i2c_client *client);

@@ -45,6 +45,8 @@
 struct sensor_calibration_data {
 	s32 accel_offset[3];
 	s32 gyro_offset[3];
+    s32 ps_data[3];
+    s32 als_data[3];
 	u8 is_accel_calibrated;
 	u8 is_gyro_calibrated;
 };
@@ -488,7 +490,9 @@ static int sensor_reset_rate(struct i2c_client *client, int rate)
 	else if (rate > 200)
 		rate = 200;
 
-	dev_info(&client->dev, "set sensor poll time to %dms\n", rate);
+    //rate = 20;//david debug for 32670
+
+	dev_info(&client->dev, "stk david debug set sensor poll time to %dms\n", rate);
 
 	/* work queue is always slow, we need more quickly to match hal rate */
 	if (sensor->pdata->poll_delay_ms == (rate - 2))
@@ -559,6 +563,8 @@ static int sensor_irq_init(struct i2c_client *client)
 	int result = 0;
 	int irq;
 
+    
+    dev_info(&client->dev, "%s: stk get polling delay=%d ms\n", __func__, sensor->pdata->poll_delay_ms);
 	if ((sensor->pdata->irq_enable) && (sensor->pdata->irq_flags != SENSOR_UNKNOW_DATA)) {
 		if (sensor->pdata->poll_delay_ms <= 0)
 			sensor->pdata->poll_delay_ms = 30;
@@ -1188,6 +1194,7 @@ static long light_dev_ioctl(struct file *file,
 			return -EFAULT;
 		}
 		mutex_lock(&sensor->operation_mutex);
+        dev_err(&client->dev, "%s:stk light sensor rate= %d\n", __func__, rate);
 		result = sensor_reset_rate(client, rate);
 		if (result < 0) {
 			mutex_unlock(&sensor->operation_mutex);
@@ -1651,6 +1658,7 @@ int sensor_probe(struct i2c_client *client, const struct i2c_device_id *devid)
 
 	of_property_read_u32(np, "power-off-in-suspend",
 			     &pdata->power_off_in_suspend);
+    dev_info(&client->adapter->dev, "%s: stk get2 type %s,poll_delay_ms:%d\n", __func__, pdata->type, pdata->poll_delay_ms);
 
 	switch (pdata->layout) {
 	case 1:
@@ -1783,7 +1791,10 @@ int sensor_probe(struct i2c_client *client, const struct i2c_device_id *devid)
 	client->irq = pdata->irq_pin;
 	type = pdata->type;
 	pdata->irq_flags = irq_flags;
-	pdata->poll_delay_ms = 30;
+    //add david
+	pdata->poll_delay_ms = 110;
+    
+    dev_info(&client->adapter->dev, "%s stk get type %s,poll_delay_ms:%d\n", __func__, pdata->type, pdata->poll_delay_ms);
 
 	if ((type >= SENSOR_NUM_TYPES) || (type <= SENSOR_TYPE_NULL)) {
 		dev_err(&client->adapter->dev, "sensor type is error %d\n", type);
@@ -2042,6 +2053,8 @@ static const struct i2c_device_id sensor_id[] = {
 	{"light_cm3218", LIGHT_ID_CM3218},
 	/*david add 20210121*/
 	{"ls_stk3x3x", LIGHT_ID_STK3X3X},
+	{"ls_stk3x8xx", LIGHT_ID_STK3X8XX},
+	{"ls_stk3a6x", LIGHT_ID_STK3A6X},
 	/*add end*/
 	{"light_cm3232", LIGHT_ID_CM3232},
 	{"light_al3006", LIGHT_ID_AL3006},
@@ -2059,6 +2072,8 @@ static const struct i2c_device_id sensor_id[] = {
 	{"ps_stk3410", PROXIMITY_ID_STK3410},
 	/*david add 20210121*/
 	{"ps_stk3x3x", PROXIMITY_ID_STK3X3X},
+	{"ps_stk3x8xx", PROXIMITY_ID_STK3X8XX},
+	{"ps_stk3a6x", PROXIMITY_ID_STK3A6X},
 	/*add end*/
 	/*temperature*/
 	{"temperature", TEMPERATURE_ID_ALL},
@@ -2104,6 +2119,10 @@ static struct of_device_id sensor_dt_ids[] = {
 	/*david add 20210121*/
 	{ .compatible = "ls_stk3x3x" },
 	{ .compatible = "ps_stk3x3x" },
+	{ .compatible = "ls_stk3x8xx" },
+	{ .compatible = "ps_stk3x8xx" },
+	{ .compatible = "ls_stk3a6x" },
+	{ .compatible = "ps_stk3a6x" },
 	/*add end*/
 	{ .compatible = "ls_photoresistor" },
 	{ .compatible = "ls_us5152" },
