@@ -45,95 +45,30 @@
 #endif
 #include "linux/stk3x3x.h"
 
-#define DRIVER_VERSION  "3.10.0_0429"
-
 /* Driver Settings */
 #define STK_POLL_ALS		/* ALS interrupt is valid only when STK_PS_INT_MODE = 1	or 4*/
 // #define STK_IRS
-#define STK_DEBUG_PRINTF
-
 #define STK_ALS_FIR
-
-#define PROXIMITY_ID_I2C 2
-
 /*****************************************************************************/
-/* Define Register Map */
-#define STK_STATE_REG 			0x00
-#define STK_PSCTRL_REG 			0x01
-#define STK_ALSCTRL_REG 		0x02
-#define STK_LEDCTRL_REG 		0x03
-#define STK_INT_REG 			0x04
-#define STK_WAIT_REG 			0x05
-#define STK_THDH1_PS_REG 		0x06
-#define STK_THDH2_PS_REG 		0x07
-#define STK_THDL1_PS_REG 		0x08
-#define STK_THDL2_PS_REG 		0x09
-#define STK_THDH1_ALS_REG 		0x0A
-#define STK_THDH2_ALS_REG 		0x0B
-#define STK_THDL1_ALS_REG 		0x0C
-#define STK_THDL2_ALS_REG 		0x0D
-#define STK_FLAG_REG 			0x10
-#define STK_DATA1_PS_REG	 	0x11
-#define STK_DATA2_PS_REG 		0x12
-#define STK_DATA1_ALS_REG 		0x13
-#define STK_DATA2_ALS_REG 		0x14
-#define STK_DATA1_OFFSET_REG 	0x15
-#define STK_DATA2_OFFSET_REG 	0x16
-#define STK_DATA1_IR_REG 		0x17
-#define STK_DATA2_IR_REG 		0x18
-#define STK_PDT_ID_REG 			0x3E
-#define STK_RSRVD_REG 			0x3F
-#define STK_SW_RESET_REG		0x80	
-
-#define STK_STATE_EN_IRS_MASK	0x80
-#define STK_STATE_EN_AK_MASK	0x40
-#define STK_STATE_EN_ASO_MASK	0x20
-#define STK_STATE_EN_IRO_MASK	0x10
-#define STK_STATE_EN_WAIT_MASK	0x04
-#define STK_STATE_EN_ALS_MASK	0x02
-#define STK_STATE_EN_PS_MASK	0x01
-
-#define STK_FLG_ALSDR_MASK		0x80
-#define STK_FLG_PSDR_MASK		0x40
-#define STK_FLG_ALSINT_MASK		0x20
-#define STK_FLG_PSINT_MASK		0x10
-#define STK_FLG_OUI_MASK			0x04
-#define STK_FLG_IR_RDY_MASK		0x02
-#define STK_FLG_NF_MASK			0x01
-
-#define STK_INT_ALS				0x08
-
-#define STK_IRC_MAX_ALS_CODE		20000
-#define STK_IRC_MIN_ALS_CODE		25
-#define STK_IRC_MIN_IR_CODE		50
-#define STK_IRC_ALS_DENOMI		2		
-#define STK_IRC_ALS_NUMERA		5
-#define STK_IRC_ALS_CORREC		850
-
-#define STK_IRS_IT_REDUCE			2
-#define STK_ALS_READ_IRS_IT_REDUCE	5
-#define STK_ALS_THRESHOLD			30
-
-/*****************************************************************************/
-#define STK3310SA_PID		0x17
-#define STK3311SA_PID		0x1E
-#define STK3311WV_PID	0x1D
-#define STK335XX_PID        0x51
-
-/*****************************************************************************/
+#define ALS_DEFAULT_GAIN    128
 
 #ifdef STK_ALS_FIR
 	#define STK_FIR_LEN	8
 	#define MAX_FIR_LEN 32
 	
 struct data_filter {
-    u16 raw[MAX_FIR_LEN];
+    uint32_t raw[MAX_FIR_LEN];
     int sum;
     int number;
     int idx;
-};
+}stk3x3x_fir;
 #endif
 
+static uint32_t last_als = 0;
+static uint32_t last_data_c = 0; //Modify data type, Because "c_raw" may exceed 65535
+static bool first_als = true;
+uint8_t als_gain_level = 0;
+uint16_t stk3x3x_als_gain = 128;
 
 struct stk3x3x_data {
 	uint16_t ir_code;
@@ -206,9 +141,7 @@ struct stk3x3x_data {
 	int re_enable_ges;	
 	atomic_t gesture2;
 #endif	
-#ifdef STK_IRS
-	int als_data_index;
-#endif	
+
 #ifdef STK_QUALCOMM_POWER_CTRL
 	struct regulator *vdd;
 	struct regulator *vio;
@@ -219,36 +152,33 @@ struct stk3x3x_data {
 	uint32_t als_code_last;
 };
 
-static struct stk3x3x_data *ps_data;
+static struct stk3x3x_data *stk_als_data;
 
-const int ALS_LEVEL[] = {
-    50,100,150,200,250,300,350,400,450,500,550,600,650,700,
-    750,800,850,900,950,1000,1050,1100,1150,1200,1250,1300,1350,1400,
-    1450,1500,1550,1600,1650,1700,1750,1800,1850,1900,1950,2000,2050,2100,
-    2150,2200,2250,2300,2350,2400,2450,2500,2550,2600,2650,2700,2750,2800
-
-};
-
-//const int ALS_LEVEL[] = {100, 500, 1000, 1600, 2250, 3200, 6400, 12800, 20000, 26000};
-
-
-static struct stk3x3x_platform_data stk3x3x_pfdata={ 
-//  .state_reg = 0x0,       /* disable all */ 
-//  .psctrl_reg = 0xB2,     /* ps_persistance=1, ps_gain=64X, PS_IT=0.391ms */ 
-//  .alsctrl_reg = 0x32, 	 /* als_persistance=1, als_gain=64X, ALS_IT=100ms */
-//  .ledctrl_reg = 0xC0,   /* 100mA IRDR, 64/64 LED duty */ 
-//  .wait_reg = 0x1F,      /* 50 ms */  
-//.ps_thd_h = 5000, 
-//.ps_thd_l = 4000, 
-
-  //.int_pin = sprd_3rdparty_gpio_pls_irq,  
-  .transmittance = 500, 
-  .stk_max_min_diff = 200,
-  .stk_lt_n_ct = 100,
-  .stk_ht_n_ct = 150, 
-};
+const int ALS_LEVEL[] = {100, 500, 1000, 1600, 2250, 3200, 6400, 12800, 20000, 26000};
 
 /*****************************************************************************/
+
+#ifdef STK_ALS_FIR
+static void stk3x3x_als_bubble_sort(uint32_t* sort_array, uint8_t size_n)
+{
+	int i, j, tmp;
+
+	for (i = 1; i < size_n; i++)
+	{
+		tmp = sort_array[i];
+		j = i - 1;
+
+		while (j >= 0 && sort_array[j] > tmp)
+		{
+			sort_array[j + 1] = sort_array[j];
+			j = j - 1;
+		}
+
+		sort_array[j + 1] = tmp;
+	}
+}
+#endif
+
 
 #if 0
 static int32_t stk3x3x_set_als_thd_l(struct i2c_client *client, uint16_t thd_l)
@@ -289,11 +219,7 @@ static int stk_light_sensor_active(struct i2c_client *client, int enable, int ra
 	struct sensor_private_data *sensor =
 	    (struct sensor_private_data *) i2c_get_clientdata(client);	
 	int result = 0;
-	// int status = 0;
-	// char buffer[3] = {0};
-	// int high = 0x80, low = 0x60;
-	//int ret = 0;
-	
+
 	sensor->ops->ctrl_data = sensor_read_reg(client, sensor->ops->ctrl_reg);	
 #ifndef STK_POLL_ALS
     if (enable)
@@ -301,34 +227,35 @@ static int stk_light_sensor_active(struct i2c_client *client, int enable, int ra
         stk3x3x_set_als_thd_h(client, 0x0000);
         stk3x3x_set_als_thd_l(client, 0xFFFF);
 	}	
-	#ifdef STK_IRS
-	if(enable && !(sensor->ops->ctrl_data & STK_STATE_EN_PS_MASK))
-	{
-		ret = stk3x3x_get_ir_reading(ps_data, STK_IRS_IT_REDUCE);
-		if(ret > 0)
-			ps_data->ir_code = ret;
-	}
-	#endif	
 #endif	
-	sensor->ops->ctrl_data = (uint8_t)((sensor->ops->ctrl_data) & (~(STK_STATE_EN_ALS_MASK | STK_STATE_EN_WAIT_MASK))); 
+	sensor->ops->ctrl_data = (uint8_t)((sensor->ops->ctrl_data) & (~(STK_STATE_EN_ALS_MASK | STK_STATE_EN_WAIT_MASK)));
 
-	if(enable)
-		sensor->ops->ctrl_data |= STK_STATE_EN_ALS_MASK;	
-	else if (sensor->ops->ctrl_data & STK_STATE_EN_PS_MASK)		
-		sensor->ops->ctrl_data |= STK_STATE_EN_WAIT_MASK;		
-	printk("%s:reg=0x%x,reg_ctrl=0x%x,enable=%d\n",__func__,sensor->ops->ctrl_reg, sensor->ops->ctrl_data, enable);
+	if(enable){
+		sensor->ops->ctrl_data |= STK_STATE_EN_ALS_MASK;
+#ifdef STK_ALS_FIR
+	        memset(&stk_als_data->fir, 0x00, sizeof(stk_als_data->fir));  
+       		atomic_set(&stk_als_data->firlength, STK_FIR_LEN);
+	}   
+#endif	
+	else if (sensor->ops->ctrl_data & STK_STATE_EN_PS_MASK){		
+		sensor->ops->ctrl_data |= STK_STATE_EN_WAIT_MASK;
+	}		
+
 	result = sensor_write_reg(client, sensor->ops->ctrl_reg, sensor->ops->ctrl_data);
 	if(result)
 		printk("%s:fail to active sensor\n",__func__);
 
-	if(enable)
+	if(!enable)
 	{
-#ifdef STK_IRS
-		ps_data->als_data_index = 0;
-#endif		
+	    first_als = true;
 		// sensor->ops->report(sensor->client);
 	}
-	ps_data->als_enabled = enable?true:false;
+	stk_als_data->als_enabled = enable?true:false;
+    printk("%s:reg=0x%x,reg_ctrl=0x%x,enable=%d\n",
+        __func__,
+        sensor->ops->ctrl_reg,
+        sensor->ops->ctrl_data,
+        enable);
 	return result;
 }
 
@@ -353,8 +280,8 @@ static int stk_light_sensor_init(struct i2c_client *client)
     int reg_num, i;
 	
 	printk("stk %s init ...\n", __func__);
-	ps_data = kzalloc(sizeof(struct stk3x3x_data),GFP_KERNEL);
-	if(!ps_data)
+	stk_als_data = kzalloc(sizeof(struct stk3x3x_data),GFP_KERNEL);
+	if(!stk_als_data)
 	{
 		printk(KERN_ERR "%s: failed to allocate stk3x3x_data\n", __func__);
 		return -ENOMEM;
@@ -402,11 +329,11 @@ static int stk_light_sensor_init(struct i2c_client *client)
 		goto EXIT_ERR;	
 #endif
 	
-	ps_data->als_code_last = 0;
+	stk_als_data->als_code_last = 0;
 
 #ifdef STK_ALS_FIR
-        memset(&ps_data->fir, 0x00, sizeof(ps_data->fir));  
-        atomic_set(&ps_data->firlength, STK_FIR_LEN);   
+        memset(&stk_als_data->fir, 0x00, sizeof(stk_als_data->fir));  
+        atomic_set(&stk_als_data->firlength, STK_FIR_LEN);   
 #endif
 
 	
@@ -423,65 +350,10 @@ EXIT_ERR:
 
 static int stk_light_report_abs_value(struct input_dev *input, int data)
 {
-	unsigned char index = 0;
-    int als_level_index = 0;
-    int i;
-
-    //data = data/10;
-  
-    for (i = 0;i < sizeof(ALS_LEVEL)/sizeof(ALS_LEVEL[0]); i++)
-    {
-        if (data <= ALS_LEVEL[als_level_index])
-        {
-            index = als_level_index;
-            als_level_index++;
-            input_report_abs(input, ABS_MISC, index);
+            input_report_abs(input, ABS_MISC, data);
             input_sync(input);
-            return index;
-            break;
-        }
-        //break;
-    }
-/*
+            return data;
 
-	if(data <= ALS_LEVEL[0]){
-		index = 0;goto report;
-	}
-	else if(data <= ALS_LEVEL[1]){
-		index = 1;goto report;
-	}
-	else if(data <= ALS_LEVEL[2]){
-		index = 2;goto report;
-	}
-	else if(data <= ALS_LEVEL[3]){
-		index = 3;goto report;
-	}
-	else if(data <= ALS_LEVEL[4]){
-		index = 4;goto report;
-	}
-	else if(data <= ALS_LEVEL[5]){
-		index = 5;goto report;
-	}
-	else if(data <= ALS_LEVEL[6]){
-		index = 6;goto report;
-   }
-    else if(data <= ALS_LEVEL[7]){
-		index = 7;goto report;
-   }
-    else if(data <= ALS_LEVEL[8]){
-		index = 8;goto report;
-	}
-	else{
-		index = 9;goto report;
-	}
-	
-
-report:
-	input_report_abs(input, ABS_MISC, index);
-	input_sync(input);
-	
-	return index;
-*/
 }
 
 #if 0
@@ -504,261 +376,246 @@ static int stk_allreg(struct i2c_client *client)
 }
 #endif
 
-static int32_t stk3x3x_set_irs_it_slp(struct i2c_client *client, uint16_t *slp_time, int32_t ials_it_reduce)
+static int stk3x3x_als_cal(struct i2c_client *client, int als_data)
 {
-	int irs_alsctrl;
-	int32_t ret;
-	
-	irs_alsctrl = (stk3x3x_pfdata.alsctrl_reg & 0x0F) - ials_it_reduce;
-	switch(irs_alsctrl)
-	{
-		case 2:
-			*slp_time = 1;
-			break;			
-		case 3:
-			*slp_time = 2;
-			break;	
-		case 4:
-			*slp_time = 3;
-			break;	
-		case 5:
-			*slp_time = 6;
-			break;
-		case 6:
-			*slp_time = 12;
-			break;
-		case 7:
-			*slp_time = 24;			
-			break;
-		case 8:
-			*slp_time = 48;			
-			break;
-		case 9:
-			*slp_time = 96;			
-			break;				
-		case 10:
-			*slp_time = 192;
-			break;				
-		default:
-			printk(KERN_ERR "%s: unknown ALS IT=0x%x\n", __func__, irs_alsctrl);
-			ret = -EINVAL;	
-			return ret;
-	}
-	irs_alsctrl |= (stk3x3x_pfdata.alsctrl_reg & 0xF0);
-	ret = sensor_write_reg(client, STK_ALSCTRL_REG, irs_alsctrl);
-	if(ret <= 0)
-		return ret;
-	return 0;
-}
-
-static int stk3x3x_get_ir_reading(struct i2c_client *client, int32_t als_it_reduce)
-{
-	int res = 0;	
-    int32_t word_data, ret;
-	int w_reg, retry = 0;	
-	uint16_t irs_slp_time = 100;
-	char buffer[2] = {0};
-	
-	ret = stk3x3x_set_irs_it_slp(client, &irs_slp_time, als_it_reduce);
-	if(ret < 0)
-		return ret;
-	
-	w_reg = sensor_read_reg(client, STK_STATE_REG);
-	if(w_reg <= 0)
-	{
-		printk("stk %s i2c error(%d)\n", __func__, w_reg);
-		return ret;
-	}	
-
-	w_reg |= STK_STATE_EN_IRS_MASK;		
-	res = sensor_write_reg(client, STK_STATE_REG, w_reg);
-	if(res <= 0)
-		return res;
-	
-	msleep(irs_slp_time);		
-	do
-	{
-		usleep_range(3000, 4000);
-		w_reg = sensor_read_reg(client, STK_FLAG_REG);
-		if(w_reg <= 0)
-			return w_reg;
-		retry++;
-	}while(retry < 10 && ((w_reg & STK_FLG_IR_RDY_MASK) == 0));
-	
-	if(retry == 10)
-	{
-		printk(KERN_ERR "%s: ir data is not ready for a long time\n", __func__);
-		return -EINVAL;
-	}
-
-	w_reg &= (~STK_FLG_IR_RDY_MASK);
-	res = sensor_write_reg(client, STK_FLAG_REG, w_reg);
-	if(res <= 0)
-		return res;
-	
-	buffer[0] = STK_DATA1_IR_REG;
-	res = sensor_rx_data(client, buffer, 2);	
-	if(res)
-	{
-		printk("%s:line=%d,error\n",__func__,__LINE__);
-		return res;
-	}
-	word_data = ((buffer[0]<<8) | buffer[1]);	
-	printk(KERN_INFO "%s: ir=%d\n", __func__, word_data);
-	
-	res = sensor_write_reg(client, STK_ALSCTRL_REG, stk3x3x_pfdata.alsctrl_reg);
-	if(res <= 0)
-		return res;
-	
-	return word_data;
-}
-#ifdef STK_IRS	
-static int stk_als_ir_skip_als(struct i2c_client *client, struct sensor_private_data *sensor)
-{
-	int ret;
-	unsigned char buffer[2] = {0};	
-	
-	if(ps_data->als_data_index < 60000)
-		ps_data->als_data_index++;
-	else
-		ps_data->als_data_index = 0;
-	
-	if(	ps_data->als_data_index % 10 == 1)
-	{
-		buffer[0] = STK_DATA1_ALS_REG;
-		ret = sensor_rx_data(client, buffer, 2);	
-		if(ret)
-		{
-			printk("%s:line=%d,error=%d\n",__func__,__LINE__, ret);
-			return ret;
-		}
-		return 1;
-	}
-	return 0;
-}
-#endif
-static int stk_als_cal(struct i2c_client *client, int *als_data)
-{
-    int32_t ir_data = 0;
 #ifdef STK_ALS_FIR
 	int index;   
-	int firlen = atomic_read(&ps_data->firlength);   
-	const int ir_enlarge = 1 << (STK_ALS_READ_IRS_IT_REDUCE - STK_IRS_IT_REDUCE);
+	int firlen = atomic_read(&stk_als_data->firlength);   
 #endif	
 
-	ps_data->als_code_last = *als_data;	
+    printk("%s: get_value %d\n",__func__, als_data);
+	stk_als_data->als_code_last = als_data;	
 #ifdef STK_ALS_FIR
-	if(ps_data->fir.number < firlen)
+	if(stk_als_data->fir.number < firlen)
 	{                
-		ps_data->fir.raw[ps_data->fir.number] = *als_data;
-		ps_data->fir.sum += *als_data;
-		ps_data->fir.number++;
-		ps_data->fir.idx++;
+		stk_als_data->fir.raw[stk_als_data->fir.number] = als_data;
+		stk_als_data->fir.sum += als_data;
+		stk_als_data->fir.number++;
+		stk_als_data->fir.idx++;
 	}
 	else
 	{
-		index = ps_data->fir.idx % firlen;
-		ps_data->fir.sum -= ps_data->fir.raw[index];
-		ps_data->fir.raw[index] = *als_data;
-		ps_data->fir.sum += *als_data;
-		ps_data->fir.idx++;
-		*als_data = ps_data->fir.sum/firlen;
+		index = stk_als_data->fir.idx % firlen;
+		stk_als_data->fir.sum -= stk_als_data->fir.raw[index];
+		stk_als_data->fir.raw[index] = als_data;
+		stk_als_data->fir.sum += als_data;
+		stk_als_data->fir.idx++;
+		als_data = stk_als_data->fir.sum/firlen;
 	}	
 #endif		
-	return 0;
+	return als_data;
 }
 
-#ifdef STK_IRS
-static void stk_als_ir_get_corr(int32_t als)
+static uint32_t stk3x3x_als_fir(struct i2c_client *client, uint32_t als_raw_data)
 {
-	int32_t als_comperator;
-	
-	if(ps_data->ir_code)
-	{
-		ps_data->als_correct_factor = 1000;
-		if(als < STK_IRC_MAX_ALS_CODE && als > STK_IRC_MIN_ALS_CODE && 
-			ps_data->ir_code > STK_IRC_MIN_IR_CODE)
-		{
-			als_comperator = als * STK_IRC_ALS_NUMERA / STK_IRC_ALS_DENOMI;
-			if(ps_data->ir_code > als_comperator)
-				ps_data->als_correct_factor = STK_IRC_ALS_CORREC;
-		}
-#ifdef STK_DEBUG_PRINTF				
-		printk(KERN_INFO "%s: als=%d, ir=%d, als_correct_factor=%d", __func__, 
-						als, ps_data->ir_code, ps_data->als_correct_factor);
-#endif		
-		ps_data->ir_code = 0;
-	}	
-	return;
-}
+#ifdef STK_ALS_FIR
+        int fir_index = 0;   
+        uint32_t mid_als = 0;
+        uint32_t cpraw[STK_FIR_LEN] = { 0 };
+#endif
+        printk("%s: als_value %d\n",__func__, als_raw_data);
+        //stk3a6x_als_data->als_code_last = als_raw_data;
 
-static int stk_als_ir_run(struct i2c_client *client)
-{
-	int ret;
-	
-	if(ps_data->als_data_index % 10 == 0)
-	{
-		if(ps_data->ps_distance_last != 0 && ps_data->ir_code == 0)
-		{
-			ret = stk3x3x_get_ir_reading(client, STK_IRS_IT_REDUCE);
-			if(ret > 0)
-				ps_data->ir_code = ret;
-		}		
-		return ret;
-	}	
-	return 0;
-}
+#ifdef STK_ALS_FIR
+    memset(cpraw, 0x00, sizeof(cpraw) / sizeof(cpraw[0]));
+    if(stk3x3x_fir.number < STK_FIR_LEN)
+    {                
+        stk3x3x_fir.raw[stk3x3x_fir.number] = als_raw_data;
+        stk3x3x_fir.number++;
+        stk3x3x_fir.idx++;
+    }
+    else
+    {
+        fir_index = stk3x3x_fir.idx % stk3x3x_fir.number;
+        stk3x3x_fir.raw[fir_index] = als_raw_data;
+        stk3x3x_fir.idx++;
+        
+        //memcpy(cpraw, stk3x3x_fir.raw, sizeof(stk3x3x_fir.raw));
+        memcpy(cpraw, stk3x3x_fir.raw,  sizeof(cpraw));
+
+#ifdef STK_DEBUG_PRINTF
+        printk("%s: :~~~~cpraw_CP1 = %u %u %u %u %u\n",__func__, cpraw[0], cpraw[1], cpraw[2], cpraw[3], cpraw[4]);  
+        printk("%s: :~~~~sizeof(stk3x3x_fir.raw)=%ld  sizeof(cpraw)=%ld sizeof(cpraw[0])=%ld\n",
+            __func__,sizeof(stk3x3x_fir.raw), sizeof(cpraw), sizeof(cpraw[0]));  
+#endif
+        stk3x3x_als_bubble_sort(cpraw, sizeof(cpraw) / sizeof(cpraw[0]));
+        mid_als = cpraw[STK_FIR_LEN / 2];
+        als_raw_data = mid_als;
+#ifdef STK_DEBUG_PRINTF
+        printk("%s: :~~~~cpraw_CP2 = %u %u %u %u %u\n",__func__, cpraw[0], cpraw[1], cpraw[2], cpraw[3], cpraw[4]);  
+#endif
+    }
+
 #endif
 
-static int stk_light_sensor_report_value(struct i2c_client *client)
+    return als_raw_data;
+}
+
+
+//add auto gain david 20210514
+static bool stk3x3x_set_als_gain(struct i2c_client *client, uint16_t level)
+{
+    int ret = 0;
+    uint8_t alsctrl_reg, gainctrl_reg, gain;
+    uint8_t rx_buf[1] = {0};
+
+    //printk("%s: starting\n", __func__);
+    //ret |= oppo_i2c_read_byte(ALS, STK_ALSCTRL_REG, rx_buf);
+    rx_buf[0] = sensor_read_reg(client, STK_ALSCTRL_REG);
+    alsctrl_reg = rx_buf[0];
+    //ret |= oppo_i2c_read_byte(ALS, STK_GAINCTRL_REG, rx_buf);
+    rx_buf[0] = sensor_read_reg(client, STK_GAINCTRL_REG);
+    gainctrl_reg = rx_buf[0];
+
+    if (level == 0) {
+        // Highest gain for low light :  ALS Gain X128 & C Gain X128
+        // Reg[0x02] don't care
+        // Write Reg[0x4E] = 0x06, GAIN_ALS_DX128 = 1, GAIN_C_DX128 = 1
+        alsctrl_reg = (alsctrl_reg & 0xCF) | STK_ALS_GAIN64;
+        gainctrl_reg = (gainctrl_reg & 0xC9) | 0x06; //als&c data gain x128
+        gain = 128;
+        //printk("%s level =%d\n", __func__, level);
+    } else if (level == 1) {
+        // Middle gain for middle light :  ALS Gain X16 & C Gain X16
+        // Write Reg[0x02] = 0x21, ALS IT = 50ms, GAIN_ALS = 2' b10
+        // Write Reg[0x4E] = 0x20, GAIN_ALS_DX128 = 0, GAIN_C_DX128 = 0, GAIN_C = 2' b10
+        alsctrl_reg = (alsctrl_reg & 0xCF) | STK_ALS_GAIN16;
+        gainctrl_reg = (gainctrl_reg & 0xC9) | 0x20; //c data gain x16
+        gain = 16;
+        //printk("%s level =%d\n", __func__, level);
+    } else if (level == 2) {
+        //Lowest gain for high light :  ALS Gain X1 & C Gain X1
+        //Write Reg[0x02] = 0x01, ALS IT = 50ms, GAIN_ALS = 2' b00
+        //Write Reg[0x4E] = 0x00, GAIN_ALS_DX128 = 0, GAIN_C_DX128 = 0, GAIN_C = 2' b00
+        alsctrl_reg = (alsctrl_reg & 0xCF) | STK_ALS_GAIN1;
+        gainctrl_reg = (gainctrl_reg & 0xC9) | 0x00; //c data gain x1
+        gain = 1;
+        //printk("%s level =%d\n", __func__, level);
+    } else {
+        printk("%s level =%d\n", __func__, level);
+        return false;
+    }
+//sensor_write_reg(client, STK_INT_REG, value);
+    ret = sensor_write_reg(client, STK_ALSCTRL_REG, alsctrl_reg);
+    if(ret < 0)
+    {
+        printk("stk %s sensor_write_reg err \n", __func__);
+    }
+    ret = sensor_write_reg(client, STK_GAINCTRL_REG, gainctrl_reg);
+    if(ret < 0)
+    {
+        printk("stk %s sensor_write_reg err \n", __func__);
+    }
+    rx_buf[0] = sensor_read_reg(client, 0x5F);
+    ret = sensor_write_reg(client, 0x5F, (rx_buf[0] | 0x01));
+    if(ret < 0)
+    {
+        printk("stk %s sensor_write_reg err \n", __func__);
+    }
+
+    stk3x3x_als_gain = gain;
+    printk("%s level = %d 02 = 0x%x 4E = 0x%x %d\n", __func__, level, alsctrl_reg, gainctrl_reg , gain);
+
+    return true;
+}
+
+static bool stk3x3x_als_auto_gain(struct i2c_client *client, uint16_t *als_data)
+{
+    bool result = false;
+
+    //printk("%s: starting\n", __func__);
+    if (((als_data[0]) > 64000 || (als_data[4] > 64000)) &&
+        (als_gain_level < 2)) {
+        // Reduce gain
+        als_gain_level++;
+        result = stk3x3x_set_als_gain(client, als_gain_level);
+    } else if (((als_data[0] < 3000) && (als_data[4] < 3000)) &&
+        (als_gain_level > 0)) {
+        // Raise gain
+        als_gain_level--;
+        result = stk3x3x_set_als_gain(client, als_gain_level);
+    }
+    return result;
+}
+//add auto gain david 20210514 end
+
+static int stk3x3x_report_value(struct i2c_client *client)
 {
 	struct sensor_private_data *sensor =
 	    (struct sensor_private_data *) i2c_get_clientdata(client);	
 	int result = 0;
-	uint32_t value = 0;
-    uint32_t als_value = 0, ch0_value = 0, ch1_value = 0, ch2_value = 0, ch3_value = 0;
-	unsigned char buffer[10] = {0};	
+    bool auto_gain = false;
+	int flag_data = 0;
+    uint8_t count = 0;
+    uint16_t als_data[5] = {0};//als/r/g/b/c
+	unsigned char buffer[10] = {0};
 	char index = 0;
+    int als = 0.0;
+    uint32_t report_lux1;
+    uint32_t c_raw = 0;
+    uint32_t g_raw = 0;
 
 	if(sensor->ops->read_len < 2)	//sensor->ops->read_len = 1
 	{
 		printk("%s:lenth is error,len=%d\n",__func__,sensor->ops->read_len);
 		return -1;
 	}
-	value = sensor_read_reg(client, STK_FLAG_REG);
-	if(value < 0)
+	flag_data = sensor_read_reg(client, STK_FLAG_REG);
+	if(flag_data < 0)
 	{
-		printk("stk %s read STK_FLAG_REG, ret=%d\n", __func__, value);
-		return value;
+		printk("stk %s read STK_FLAG_REG, ret=%d\n", __func__, flag_data);
+		return flag_data;
 	}
 
-	if(!(value & STK_FLG_ALSDR_MASK))
+	if(!(flag_data & STK_FLG_ALSDR_MASK))
 		return 0;
 		
 	buffer[0] = STK_DATA1_ALS_REG;
-	//result = sensor_rx_data(client, buffer, sensor->ops->read_len);
     result = sensor_rx_data(client, buffer, 10);
-	if(result)
+	if (result)
 	{
 		printk("%s:line=%d,error\n",__func__,__LINE__);
 		return result;
 	}
+    for(count = 0; count < (sizeof(als_data) / sizeof(als_data[0])); count++) {
+        *(als_data + count) = (*(buffer + (2 * count)) << 8 | (* (buffer + (2 * count + 1))));
+    }
+    
+    if (!first_als) {
+        if ((flag_data & STK_FLG_ALSDR_MASK)) {
+            auto_gain = stk3x3x_als_auto_gain(client, als_data);
+        }
+    } else {
+        printk("%s, first als data\n", __func__);
+        first_als = false;
+    }
 
-    als_value = (buffer[0] << 8) | buffer[1];
-    ch0_value = (buffer[2] << 8) | buffer[3];
-    ch1_value = (buffer[4] << 8) | buffer[5];
-    ch2_value = (buffer[6] << 8) | buffer[7];
-    ch3_value = (buffer[8] << 8) | buffer[9];
-#ifdef STK_DEBUG_PRINTF
-	printk("%s: als_data-ch3 = %d\t%d\t%d\t%d\t%d\n",__func__, als_value, ch0_value, ch1_value, ch2_value, ch3_value);
-#endif	
-	stk_als_cal(client, &als_value);
-#ifdef STK_IRS
-	stk_als_ir_get_corr(als_value);
-	als_value = als_value * ps_data->als_correct_factor / 1000;
-#endif	
+    
+    if (auto_gain) {
+        // last data
+        als = last_als;
+        c_raw = last_data_c;
+    } else {
+        als = als_data[0] * 128 / stk3x3x_als_gain; // als data
+        g_raw = als_data[2] * 128 / stk3x3x_als_gain; // als data
+        c_raw = als_data[4] * 128 / stk3x3x_als_gain;// c data
+        //todo
+        //als = stk3x3x_get_als_lux(als, c_raw);
+    }
 
-	index = stk_light_report_abs_value(sensor->input_dev, als_value);	
+    last_als = als;
+    last_data_c = c_raw;
+
+    report_lux1 = stk3x3x_als_cal(client, als);
+#ifdef STK_FIR
+    report_lux2 = stk3x3x_als_fir(client, als);
+#endif
+    //printk("%s: lux_average=%u lux_mid=%u\n",__func__, report_lux1, report_lux2);
+	printk("%s: lux als raw[0]-[4] gain= %d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n",
+	    __func__, report_lux1, als, als_data[0], als_data[1], als_data[2], als_data[3], als_data[4], stk3x3x_als_gain);
+
+    //index = stk_light_report_abs_value(sensor->input_dev, als);	
+	index = stk_light_report_abs_value(sensor->input_dev, report_lux1);	
 
 	return result;
 }
@@ -779,7 +636,7 @@ struct sensor_operate light_stk3x3x_ops = {
 	.trig				= IRQF_TRIGGER_LOW | IRQF_ONESHOT | IRQF_SHARED,		
 	.active				= stk_light_sensor_active,	
 	.init				= stk_light_sensor_init,
-	.report				= stk_light_sensor_report_value,
+	.report				= stk3x3x_report_value,
 };
 
 static struct sensor_operate *light_get_ops(void)

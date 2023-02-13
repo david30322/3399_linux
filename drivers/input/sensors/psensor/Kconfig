@@ -31,6 +31,12 @@ config PS_STK3410
 config PS_STK3X3X
 	bool "proximity sensor stk3x3x"
 	default y
+config PS_STK3X8XX
+	bool "proximity sensor stk3x8xx"
+	default y
+config PS_STK3A6X
+	bool "proximity sensor stk3a6x"
+	default y
 #add end
 endif
 

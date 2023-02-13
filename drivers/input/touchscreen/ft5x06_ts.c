@@ -162,10 +162,12 @@ static void ft5x0x_ts_report(struct ft5x0x_ts_data *ts) {
 		{
 			x = ts->screen_max_x - x;
 		}	
-
+		/*david edit for horizontal display*/
 		//printk("x = %d, y = %d\n", x, y);
-		input_report_abs(ts->input_dev, ABS_MT_POSITION_X, x);
-		input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, y);
+		//input_report_abs(ts->input_dev, ABS_MT_POSITION_X, x);
+		//input_report_abs(ts->input_dev, ABS_MT_POSITION_X, x);
+		input_report_abs(ts->input_dev, ABS_MT_POSITION_X, ts->screen_max_y-y);
+		input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, x);
 
 		input_report_abs(ts->input_dev, ABS_MT_PRESSURE, event->pressure);
 		input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, event->pressure);
@@ -187,6 +189,8 @@ static void ft5x0x_ts_report(struct ft5x0x_ts_data *ts) {
 			x = (x * ts->screen_max_x) / TOUCH_MAX_X;
 			y = (y * ts->screen_max_y) / TOUCH_MAX_Y;
 		}
+
+		printk("report point x:%d,y:%d\n",x,y);
 
 		input_report_abs(ts->input_dev, ABS_X, x);
 		input_report_abs(ts->input_dev, ABS_Y, y);
@@ -414,8 +418,11 @@ static int ft5x0x_ts_probe(struct i2c_client *client, const struct i2c_device_id
         }
         else if(0x01 == type) //7.0
         {
-                TOUCH_MAX_X = 1280;
-                TOUCH_MAX_Y = 800;
+        // TOUCH_MAX_X = 1280;
+        // TOUCH_MAX_Y = 800;
+
+            TOUCH_MAX_X = 800;
+            TOUCH_MAX_Y = 1280;
 #ifdef CONFIG_VT        //for Ubuntu
                 TOUCH_MAX_X = 800;//1280;
                 TOUCH_MAX_Y = 1280;//800;
@@ -517,9 +524,11 @@ static int ft5x0x_ts_probe(struct i2c_client *client, const struct i2c_device_id
 	set_bit(ABS_MT_WIDTH_MAJOR, input_dev->absbit);
 	set_bit(ABS_MT_POSITION_X, input_dev->absbit);
 	set_bit(ABS_MT_POSITION_Y, input_dev->absbit);
-
-	input_set_abs_params(input_dev, ABS_MT_POSITION_X, 0, ts->screen_max_x, 0, 0);
-	input_set_abs_params(input_dev, ABS_MT_POSITION_Y, 0, ts->screen_max_y, 0, 0);
+	/*david edit for horizontal display*/
+	//input_set_abs_params(input_dev, ABS_MT_POSITION_X, 0, ts->screen_max_x, 0, 0);
+	//input_set_abs_params(input_dev, ABS_MT_POSITION_X, 0, ts->screen_max_y, 0, 0);
+	input_set_abs_params(input_dev, ABS_MT_POSITION_X, 0, ts->screen_max_y, 0, 0);
+	input_set_abs_params(input_dev, ABS_MT_POSITION_Y, 0, ts->screen_max_x, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR, 0, ts->pressure_max, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_WIDTH_MAJOR, 0, 200, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_TRACKING_ID, 0, FT5X0X_PT_MAX, 0, 0);
@@ -528,9 +537,11 @@ static int ft5x0x_ts_probe(struct i2c_client *client, const struct i2c_device_id
 	set_bit(ABS_Y, input_dev->absbit);
 	set_bit(ABS_PRESSURE, input_dev->absbit);
 	set_bit(BTN_TOUCH, input_dev->keybit);
-
-	input_set_abs_params(input_dev, ABS_X, 0, ts->screen_max_x, 0, 0);
-	input_set_abs_params(input_dev, ABS_Y, 0, ts->screen_max_y, 0, 0);
+	printk("touch screen size: x:%d y:%d\n",ts->screen_max_x,ts->screen_max_y);
+//	input_set_abs_params(input_dev, ABS_X, 0, ts->screen_max_x, 0, 0);
+//	input_set_abs_params(input_dev, ABS_Y, 0, ts->screen_max_y, 0, 0);
+	input_set_abs_params(input_dev, ABS_X, 0, ts->screen_max_y, 0, 0);
+	input_set_abs_params(input_dev, ABS_Y, 0, ts->screen_max_x, 0, 0);
 	input_set_abs_params(input_dev, ABS_PRESSURE, 0, ts->pressure_max, 0 , 0);
 #endif
 
