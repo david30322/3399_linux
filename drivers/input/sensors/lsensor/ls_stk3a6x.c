@@ -711,7 +711,7 @@ static int stk3a6x_get_fifo_data(struct i2c_client *client, uint16_t *data)
         printk("%s:als disable !!!,donot read fifo data\n", __func__);
         return 0;
     }
-    printk("%s in als_enabled=%d\n", __func__, stk3a6x_als_data->als_enabled);
+    //printk("%s in als_enabled=%d\n", __func__, stk3a6x_als_data->als_enabled);
 
     memset((void *)stk3a6x_fifo.frame, 0, sizeof(struct stk3a6x_fifo_frame) * STK_FIFO_MAX_FRAME);
     memset((void *)stk3a6x_fifo.data, 0, sizeof(uint8_t) * STK_FIFO_MAX_LEN);
@@ -861,7 +861,7 @@ static int stk3a6x_light_report_value(struct i2c_client *client)
     }
 
 #ifdef STK_DEBUG_PRINTF
-    printk("%s:lux_als__f_c_gain= %u\t%u\t%u\t%u\t%u\t%u\t%u\n",
+    printk("%s:lux_als_f_c_gain= %u\t%u\t%u\t%u\t%u\t%u\t%u\n",
         __func__,als_raw, als_data[0], als_data[1], als_data[2], als_data[3], als_data[4], stk3a6x_als_gain);
 #endif    
     last_als = als_raw;

@@ -14,3 +14,4 @@ obj-$(CONFIG_LS_STK3410) 		+= ls_stk3410.o
 obj-$(CONFIG_LS_STK3X3X) 		+= ls_stk3x3x.o
 obj-$(CONFIG_LS_STK3X8XX) 		+= ls_stk3x8xx.o
 obj-$(CONFIG_LS_STK3A6X) 		+= ls_stk3a6x.o
+obj-$(CONFIG_LS_W1160) 		+= ls_w1160.o

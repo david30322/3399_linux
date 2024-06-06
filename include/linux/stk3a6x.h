@@ -44,6 +44,7 @@
 #define STK_RSRVD_REG             0x3F
 #define STK_GAINCTRL_REG        0x4E
 #define STK_PDCTRL_REG           0xA1
+#define STK_PDRD_REG             0xF1
 
 #define STK_FIFOCTRL1_REG               0x60
 #define STK_FIFOCTRL1_VAL               0x34

@@ -78,6 +78,7 @@ struct stk3a6x_data {
 	uint16_t psi;	
 	uint16_t psi_set;
     uint16_t ps_raw;
+    uint16_t als_raw; //add debug
     bool ps_thd_update;
 	struct hrtimer ps_tune0_timer;	
 	struct workqueue_struct *stk_ps_tune0_wq;
@@ -815,10 +816,10 @@ static void stk3a6x_get_ps_status(struct i2c_client *client)
 {
     int ret;
     int ps_flag;
-    uint8_t tx_buf[3] = {0};
+    uint8_t tx_buf[5] = {0};
 
     tx_buf[0] = STK_FLAG_REG;
-    ret = sensor_rx_data(client, tx_buf, 3);
+    ret = sensor_rx_data(client, tx_buf, 5);//david for debug 
     if(ret)
     {
         printk("%s:line=%d, get data error!!\n",__func__,__LINE__);
@@ -826,6 +827,7 @@ static void stk3a6x_get_ps_status(struct i2c_client *client)
     
     ps_flag = tx_buf[0] & 0x01;
 	stk3a6x_ps_data->ps_raw = tx_buf[1] << 8 | tx_buf[2];
+    stk3a6x_ps_data->als_raw = tx_buf[3] << 8 | tx_buf[4];//david for debug
 
     if(stk3a6x_ps_data->ps_debug_count % 10 == 1){
         stk3a6x_get_ps_thd(client);
@@ -844,8 +846,8 @@ static void stk3a6x_get_ps_status(struct i2c_client *client)
     } else {
         printk( "stk get_ps_status error status: %d\n", tx_buf[0]);	
     }
-    printk("%s stk cur psdata=%d, flag=0x%x, dis=%d\n",
-        __func__, stk3a6x_ps_data->ps_raw, tx_buf[0], stk3a6x_ps_data->ps_report);
+    printk("%s stk cur psdata=%d, alsdata=%d flag=0x%x, dis=%d\n",
+        __func__, stk3a6x_ps_data->ps_raw, stk3a6x_ps_data->als_raw, tx_buf[0], stk3a6x_ps_data->ps_report);
 
 /*
 //clr int 

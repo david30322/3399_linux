@@ -811,9 +811,9 @@
 //3a5x
 	lsensor@46 {
                  status = "okay";
-                 compatible = "stk,ls_stk3x3x";
+                 compatible = "stk,ls_stk3a5x";
                  pinctrl-names = "default";
-         //      pinctrl-0 = <&stk3x3x_irq_gpio>;
+         //      pinctrl-0 = <&stk3a5_irq_gpio>;
                  reg = <0x46>;//33562
                  type = <SENSOR_TYPE_LIGHT SENSOR_TYPE_PROXIMITY>;
          //      irq-gpio = <&gpio4 24 IRQ_TYPE_EDGE_FALLING>;
@@ -823,34 +823,34 @@
 
     psensor@46 {
                  status = "okay";
-                 compatible = "stk,ps_stk3x3x";
+                 compatible = "stk,ps_stk3a5x";
                  pinctrl-names = "default";
-         //      pinctrl-0 = <&stk3x3x_irq_gpio>;
+         //      pinctrl-0 = <&stk3a5x_irq_gpio>;
                  reg = <0x46>;
                  type = <SENSOR_TYPE_PROXIMITY>;
          //      irq-gpio = <&gpio4 24 IRQ_TYPE_EDGE_FALLING>;
                  irq_enable = <0>;
                  poll_delay_ms = <105>;
          };
-//for 3338
-	lsensor@47 {
+//for 3338-V
+	lsensor@67 {
                  status = "okay";
                  compatible = "stk,ls_stk3x3x";
                  pinctrl-names = "default";
          //      pinctrl-0 = <&stk3x3x_irq_gpio>;
-                 reg = <0x47>;//3338
+                 reg = <0x67>;//3338-V
                  type = <SENSOR_TYPE_LIGHT SENSOR_TYPE_PROXIMITY>;
          //      irq-gpio = <&gpio4 24 IRQ_TYPE_EDGE_FALLING>;
                  irq_enable = <0>;
                  poll_delay_ms = <205>;
          };
 
-    psensor@47 {
+    psensor@67 {
                  status = "okay";
                  compatible = "stk,ps_stk3x3x";
                  pinctrl-names = "default";
          //      pinctrl-0 = <&stk3x3x_irq_gpio>;
-                 reg = <0x47>;
+                 reg = <0x67>;
                  type = <SENSOR_TYPE_PROXIMITY>;
          //      irq-gpio = <&gpio4 24 IRQ_TYPE_EDGE_FALLING>;
                  irq_enable = <0>;
@@ -869,17 +869,6 @@
                  poll_delay_ms = <205>;
          };
 
-    psensor@45 {
-                 status = "okay";
-                 compatible = "stk,ps_stk3x8xx";
-                 pinctrl-names = "default";
-         //      pinctrl-0 = <&stk3x8xx_irq_gpio>;
-                 reg = <0x45>;
-                 type = <SENSOR_TYPE_PROXIMITY>;
-         //      irq-gpio = <&gpio4 24 IRQ_TYPE_EDGE_FALLING>;
-                 irq_enable = <0>;
-                 poll_delay_ms = <105>;
-         };
 //add 32670  
 	lsensor@48 {
                  status = "okay";
@@ -900,6 +889,17 @@
          //      pinctrl-0 = <&stk3a6x_irq_gpio>;
                  reg = <0x48>;
                  type = <SENSOR_TYPE_PROXIMITY>;
+         //      irq-gpio = <&gpio4 24 IRQ_TYPE_EDGE_FALLING>;
+                 irq_enable = <0>;
+                 poll_delay_ms = <110>;
+         };
+	psensor@48 {
+                 status = "okay";
+                 compatible = "stk,ls_w1160";
+                 pinctrl-names = "default";
+         //      pinctrl-0 = <&w1160_irq_gpio>;
+                 reg = <0x48>;
+                 type = <SENSOR_TYPE_LIGHT>;
          //      irq-gpio = <&gpio4 24 IRQ_TYPE_EDGE_FALLING>;
                  irq_enable = <0>;
                  poll_delay_ms = <110>;

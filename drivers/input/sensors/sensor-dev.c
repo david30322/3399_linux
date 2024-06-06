@@ -405,7 +405,7 @@ static int sensor_get_id(struct i2c_client *client, int *value)
 			if (!result)
 				break;
 		}
-
+        dev_err(&client->dev, "%s:get id=0x%x (request=0x%x)\n", __func__, *value, sensor->ops->id_data);
 		if (result)
 			return result;
 
@@ -490,7 +490,7 @@ static int sensor_reset_rate(struct i2c_client *client, int rate)
 	else if (rate > 200)
 		rate = 200;
 
-    //rate = 20;//david debug for 32670
+    rate = 50;//david debug for 32670
 
 	dev_info(&client->dev, "stk david debug set sensor poll time to %dms\n", rate);
 
@@ -1792,7 +1792,7 @@ int sensor_probe(struct i2c_client *client, const struct i2c_device_id *devid)
 	type = pdata->type;
 	pdata->irq_flags = irq_flags;
     //add david
-	pdata->poll_delay_ms = 110;
+//	pdata->poll_delay_ms = 166;
     
     dev_info(&client->adapter->dev, "%s stk get type %s,poll_delay_ms:%d\n", __func__, pdata->type, pdata->poll_delay_ms);
 
@@ -2052,9 +2052,11 @@ static const struct i2c_device_id sensor_id[] = {
 	{"light_cm3217", LIGHT_ID_CM3217},
 	{"light_cm3218", LIGHT_ID_CM3218},
 	/*david add 20210121*/
+    {"ls_stk3a5x", LIGHT_ID_STK3A5X},
 	{"ls_stk3x3x", LIGHT_ID_STK3X3X},
 	{"ls_stk3x8xx", LIGHT_ID_STK3X8XX},
 	{"ls_stk3a6x", LIGHT_ID_STK3A6X},
+	{"ls_w1160", LIGHT_ID_W1160},
 	/*add end*/
 	{"light_cm3232", LIGHT_ID_CM3232},
 	{"light_al3006", LIGHT_ID_AL3006},
@@ -2071,8 +2073,8 @@ static const struct i2c_device_id sensor_id[] = {
 	{"ps_ap321xx", PROXIMITY_ID_AP321XX},
 	{"ps_stk3410", PROXIMITY_ID_STK3410},
 	/*david add 20210121*/
+    {"ps_stk3a5x", PROXIMITY_ID_STK3A5X},
 	{"ps_stk3x3x", PROXIMITY_ID_STK3X3X},
-	{"ps_stk3x8xx", PROXIMITY_ID_STK3X8XX},
 	{"ps_stk3a6x", PROXIMITY_ID_STK3A6X},
 	/*add end*/
 	/*temperature*/
@@ -2117,12 +2119,14 @@ static struct of_device_id sensor_dt_ids[] = {
 	{ .compatible = "ls_stk3171" },
 	{ .compatible = "ls_ap321xx" },
 	/*david add 20210121*/
+    { .compatible = "ls_stk3a5x" },
+	{ .compatible = "ps_stk3a5x" },
 	{ .compatible = "ls_stk3x3x" },
 	{ .compatible = "ps_stk3x3x" },
 	{ .compatible = "ls_stk3x8xx" },
-	{ .compatible = "ps_stk3x8xx" },
 	{ .compatible = "ls_stk3a6x" },
 	{ .compatible = "ps_stk3a6x" },
+	{ .compatible = "ls_w1160" },
 	/*add end*/
 	{ .compatible = "ls_photoresistor" },
 	{ .compatible = "ls_us5152" },

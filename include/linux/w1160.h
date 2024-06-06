@@ -1,6 +1,6 @@
 /*
  *
- * $Id: stk3x8xx.h
+ * $Id: w1160.h
  *
  * Copyright (C) 2012~2013 Lex Hsieh     <lex_hsieh@sensortek.com.tw> 
  *
@@ -9,21 +9,21 @@
  * more details.
  *
  */
-#ifndef __STK3X8XX_H__
-#define __STK3X8XX_H__
+#ifndef __W1160_H__
+#define __W1160_H__
 
 /* platform data */
-struct stk3x8xx_platform_data
+struct w1160_platform_data
 {
     uint8_t state_reg;
     uint8_t alsctrl_reg;
     uint8_t Again_reg;
 };
     
-typedef struct stk3x8xx_register_table
+typedef struct w1160_register_table
 {
     unsigned   char address;
     unsigned   char value;
-} stk3x8xx_register_table;
+} w1160_register_table;
 
 #endif // __STK3X3X_H__

@@ -1,5 +1,5 @@
 /*
- *  ls_stk3x8xx.c - Linux kernel modules for sensortek stk301x, stk321x and stk331x 
+ *  ls_w1160.c - Linux kernel modules for sensortek stk301x, stk321x and stk331x 
  *  proximity/ambient light sensor
  *
  *  Copyright (C) 2012~2015 Lex Hsieh / sensortek <lex_hsieh@sensortek.com.tw>
@@ -46,20 +46,20 @@
 #ifdef CONFIG_HAS_EARLYSUSPEND
 //#include <linux/earlysuspend.h>
 #endif
-#include "linux/stk3x8xx.h"
+#include "linux/w1160.h"
 
 #define DRIVER_VERSION  "3.10.0_0429"
 
 /* Driver Settings */
 #define STK_POLL_ALS        /* ALS interrupt is valid only when STK_PS_INT_MODE = 1    or 4*/
 #define STK_DEBUG_PRINTF
-#define STK3X8XX_DEBUG
+#define W1160_DEBUG
 //#define STK_ALS_FIR
 
 #define PROXIMITY_ID_I2C    2
 
-#define STK3X8XX_AGC_THDH     62000
-#define STK3X8XX_AGC_THDL     3000
+#define W1160_AGC_THDH     62000
+#define W1160_AGC_THDL     3000
 #define ALS_COEF            1
 #define C_COEF              1
 
@@ -111,7 +111,7 @@
 #define STK_FIFO_DATA_ALS               0x00
 #define STK_FIFO_DATA_C                 0x01
 #define STK_FIFO_DATA_ALSC              0x02
-#define STK_FIFOCTRL1_VAL               (STK_FIFO_STRM|STK_FIFO_DATA_ALS)
+#define STK_FIFOCTRL1_VAL               0x20//(STK_FIFO_STRM|STK_FIFO_DATA_ALS)
 
 #define STK_SHORT_IT_EN                 0x80
 #define STK_SHORT_IT_192US              0x00
@@ -159,7 +159,7 @@
 
 /*****************************************************************************/
 #define STK335XX_PID        0x51
-#define STK3X8XX_PID        0x82
+#define W1160_PID        0xE5//0xE5//0x82
 
 /*****************************************************************************/
 #define STK_FIFO
@@ -193,33 +193,33 @@ enum {
     ALS_C,
 };
 
-struct stk3x8xx_fifo_frame {
+struct w1160_fifo_frame {
         uint16_t als;
         uint16_t c;
-}stk3x8xx_fifo_frame;
+}w1160_fifo_frame;
 
-struct stk3x8xx_fifo {
-        struct stk3x8xx_fifo_frame frame[STK_FIFO_MAX_FRAME];
+struct w1160_fifo {
+        struct w1160_fifo_frame frame[STK_FIFO_MAX_FRAME];
         char data[STK_FIFO_MAX_LEN];
         uint16_t byte_per_frame;
         uint16_t frame_cnt;
         int fifo_frame_bytes;
         int fifo_data_sel;
         //bool first_fifo_read;
-}stk3x8xx_fifo;
+}w1160_fifo;
 #endif
 
-#define STK3X8XX_MN_LV        4 //min lv is 6
-#define STK3X8XX_MX_LV        0 //Dgain * 128 ,Again * 4
+#define W1160_MN_LV        4 //min lv is 6
+#define W1160_MX_LV        0 //Dgain * 128 ,Again * 4
 
 //static uint32_t last_als = 0;
 //static uint32_t last_data_c = 0; //Modify data type, Because "c_raw" may exceed 65535
 static bool first_als = true;
-uint8_t stk3x8xx_als_gain_level = STK3X8XX_MX_LV;
-uint16_t stk3x8xx_als_dgain = 128;
-uint16_t stk3x8xx_als_again = 4;
+uint8_t w1160_als_gain_level = W1160_MX_LV;
+uint16_t w1160_als_dgain = 128;
+uint16_t w1160_als_again = 4;
 
-struct stk3x8xx_data {
+struct w1160_data {
     uint16_t als_cnt;
     uint16_t als_correct_factor;
     uint8_t alsctrl_reg;
@@ -256,12 +256,13 @@ struct stk3x8xx_data {
     uint32_t als_code_last;
 };
 
-static struct stk3x8xx_data *stk3x8xx_als;
+static struct w1160_data *w1160_als;
 
 //const int ALS_LEVEL[] = {100, 500, 1000, 1600, 2250, 3200, 6400, 12800, 20000, 26000};
 
 /*****************************************************************************/
-static struct stk3x8xx_register_table stk3x8xx_config_table[] =
+/*
+static struct w1160_register_table w1160_config_table[] =
 {
     {0x00,  0x00},  
     {0x02,  0x00},
@@ -284,8 +285,33 @@ static struct stk3x8xx_register_table stk3x8xx_config_table[] =
     {0xF6,  0x09}, //{0xF6,  0x14}, 
     {0xF1,  0x00},  
 };
+*/
 
-static int32_t stk3x8xx_set_als_thd_l(struct i2c_client *client, uint16_t thd_l)
+static struct w1160_register_table w1160_config_table[] =
+{
+    {0x00,  0x00},  
+    {0x02,  0x00},
+    {0x03,  0x00},  
+    {0x04,  0x00},
+    {0x05,  0x00},
+    //{0x4E,  0x36},
+    {0x3D,  0x01},
+    {0x60,  0x20},//0xA2},
+    {0x61,  0x21},
+    {0x62,  0xff},//0x14},
+    {0x6A,  0x87},
+    {0x69,  0x30},
+    {0x6B,  0x00},
+    {0x6C,  0x04},
+    {0x6D,  0x0A},
+    {0x6E,  0x00},
+    {0x6F,  0x00},
+    //{0xF6,  0x09},//add
+    {0x17,  0x0D},//add
+    {0xA4,  0x84},
+};
+
+static int32_t w1160_set_als_thd_l(struct i2c_client *client, uint16_t thd_l)
 {
     unsigned char val[3];
     int ret;
@@ -302,7 +328,7 @@ static int32_t stk3x8xx_set_als_thd_l(struct i2c_client *client, uint16_t thd_l)
     return ret;        
 }
 
-static int32_t stk3x8xx_set_als_thd_h(struct i2c_client *client, uint16_t thd_h)
+static int32_t w1160_set_als_thd_h(struct i2c_client *client, uint16_t thd_h)
 {
     unsigned char val[2];
     int ret;
@@ -317,15 +343,15 @@ static int32_t stk3x8xx_set_als_thd_h(struct i2c_client *client, uint16_t thd_h)
     return ret;    
 }
 
-#ifdef STK3X8XX_DEBUG
-void stk3x8xx_dump_reg(struct i2c_client *client)
+#ifdef W1160_DEBUG
+void w1160_dump_reg(struct i2c_client *client)
 {
     uint8_t i = 0;
 //    int ret = 0;
-    uint8_t stk3x8xx_debug_reg[30] = {0};
-    uint8_t stk3x8xx_reg_map[] =
+    uint8_t w1160_debug_reg[30] = {0};
+    uint8_t w1160_reg_map[] =
     {
-        0x00, 0x02, 0x04, 0x05, 0x0A, 
+        0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x0A, 
         0x0B, 0x0C, 0x0D, 0x10,
         0x13, 0x14,
         0x15, 0x16, 0x4E, 0x60, 0x61, 0x62,
@@ -334,24 +360,24 @@ void stk3x8xx_dump_reg(struct i2c_client *client)
     };
 
     printk("%s: ", __func__);
-    for (i = 0; i < sizeof(stk3x8xx_reg_map) / sizeof(stk3x8xx_reg_map[0]); i++)
+    for (i = 0; i < sizeof(w1160_reg_map) / sizeof(w1160_reg_map[0]); i++)
     {
-        stk3x8xx_debug_reg[i] = sensor_read_reg(client, stk3x8xx_reg_map[i]);
-        printk("reg[0x%02X]=0x%02X ", stk3x8xx_reg_map[i], stk3x8xx_debug_reg[i]);
+        w1160_debug_reg[i] = sensor_read_reg(client, w1160_reg_map[i]);
+        printk("reg[0x%02X]=0x%02X ", w1160_reg_map[i], w1160_debug_reg[i]);
         if ((i + 1)%6 == 0)
             printk("\n%s: ", __func__);
     }
     printk("\n");
 }
 #else
-void stk3x8xx_dump_reg(struct i2c_client *client)
+void w1160_dump_reg(struct i2c_client *client)
 {
     return;
 }
 #endif
 
 #ifdef STK_FIFO
-static void stk3x8xx_get_fifo_info(struct i2c_client *client)
+static void w1160_get_fifo_info(struct i2c_client *client)
 {
     uint8_t buffer[2] = {0};
     int ret = 0;
@@ -361,27 +387,27 @@ static void stk3x8xx_get_fifo_info(struct i2c_client *client)
     if (ret) {
         printk("%s:read fifo info ERR,ret = %d\n",__func__, ret);
     } else if ((buffer[0] | 0x00) == 0x00) {
-        stk3x8xx_fifo.byte_per_frame = 2;
-        stk3x8xx_fifo.fifo_data_sel = ALS;
+        w1160_fifo.byte_per_frame = 2;
+        w1160_fifo.fifo_data_sel = ALS;
     } else if ((buffer[0] & 0x01) == 0x01) {
-        stk3x8xx_fifo.byte_per_frame = 2;
-        stk3x8xx_fifo.fifo_data_sel = C;
+        w1160_fifo.byte_per_frame = 2;
+        w1160_fifo.fifo_data_sel = C;
     } else if ((buffer[0] & 0x02) == 0x02){
-        stk3x8xx_fifo.byte_per_frame = 4;
-        stk3x8xx_fifo.fifo_data_sel = ALS_C;
+        w1160_fifo.byte_per_frame = 4;
+        w1160_fifo.fifo_data_sel = ALS_C;
     } else {
-        printk("%s:get fifo info ERR =%d get_reg_val=0x%x\n",__func__, stk3x8xx_fifo.byte_per_frame, buffer[0]);
+        printk("%s:get fifo info ERR =%d get_reg_val=0x%x\n",__func__, w1160_fifo.byte_per_frame, buffer[0]);
     }
 
     printk("%s:get fifo_ctrl= 0x%x fifo_bpf =%d fifo_data_sel =%d\n",
         __func__,
         buffer[0],
-        stk3x8xx_fifo.byte_per_frame,
-        stk3x8xx_fifo.fifo_data_sel);
+        w1160_fifo.byte_per_frame,
+        w1160_fifo.fifo_data_sel);
 }
 
 
-static void stk3x8xx_get_max_min(struct i2c_client *client, uint16_t *data_array, int data_len)
+static void w1160_get_max_min(struct i2c_client *client, uint16_t *data_array, int data_len)
 {
     int cnt, j, tmp;
     //uint32_t max, min;
@@ -400,141 +426,101 @@ static void stk3x8xx_get_max_min(struct i2c_client *client, uint16_t *data_array
     printk("%s get min=%d max = %d \n", __func__, data_array[0], data_array[data_len - 1]);
 }
 
-static void stk3x8xx_fifo_data_tran(char *fifo_data, int data_mode, uint16_t tran_data_len)
+static void w1160_fifo_data_tran(char *fifo_data, int data_mode, uint16_t tran_data_len)
 {
     int i = 0;
-    uint16_t data_len = stk3x8xx_fifo.byte_per_frame;
+    uint16_t data_len = w1160_fifo.byte_per_frame;
 
-    switch(data_mode)
+    for( i= 0; i < tran_data_len; i++)
+        w1160_fifo.frame[i].als = (fifo_data[0 + i * data_len] << 8)|(fifo_data[1+ i * data_len]);
+#ifdef FIFO_DATA_DEBUG
+    printk("%s: ", __func__);
+    for (i = 0; i < tran_data_len; i++)
     {
-
-    case ALS:
-        for( i= 0; i < tran_data_len; i++)
-            stk3x8xx_fifo.frame[i].als = (fifo_data[0 + i * data_len] << 8)|(fifo_data[1+ i * data_len]);
-#ifdef FIFO_DATA_DEBUG
-        printk("%s: ", __func__);
-        for (i = 0; i < tran_data_len; i++)
-        {
-            printk("als[%02d]=%d ", i, stk3x8xx_fifo.frame[i].als);
-            if ((i + 1)%FIFO_DATA_PRT_LEN == 0)
-                printk("\n%s: ", __func__);
-        }
-        printk("\n");
-#endif
-        usleep_range(1200,1300);
-        break;
-    case C:
-        for( i= 0; i < tran_data_len; i++)
-            stk3x8xx_fifo.frame[i].c = (fifo_data[0 + i * data_len] << 8)|(fifo_data[1 + i * data_len]);
-#ifdef FIFO_DATA_DEBUG
-        printk("%s: ", __func__);
-        for (i = 0; i < tran_data_len; i++)
-        {
-            printk("als[%02d]=%d ", i, stk3x8xx_fifo.frame[i].c);
-            if ((i + 1)%FIFO_DATA_PRT_LEN == 0)
-                printk("\n%s: ", __func__);
-        }
-        printk("\n");
-#endif
-        usleep_range(1200,1300);//for donot lost log
-        break;
-    case ALS_C:
-        for( i= 0; i < tran_data_len; i++){
-            stk3x8xx_fifo.frame[i].als = (fifo_data[0 + i * data_len] << 8)|(fifo_data[1 + i * data_len]);
-            stk3x8xx_fifo.frame[i].c  = (fifo_data[2 + i * data_len] << 8)|(fifo_data[3 + i * data_len]);
-        }
-#ifdef FIFO_DATA_DEBUG
-        printk("%s: ", __func__);
-        for (i = 0; i < tran_data_len; i++)
-        {
-            printk("als_c[%02d]=%d %d  ", i, stk3x8xx_fifo.frame[i].als, stk3x8xx_fifo.frame[i].c);
-            if ((i + 1)%FIFO_DATA_PRT_LEN == 0)
-                printk("\n%s: ", __func__);
-        }
-        printk("\n");
-#endif
-        usleep_range(1200,1300);//for donot lost log
-        break;
-    default:
-        break;
+        printk("als[%02d]=%d ", i, w1160_fifo.frame[i].als);
+        if ((i + 1)%FIFO_DATA_PRT_LEN == 0)
+            printk("\n%s: ", __func__);
     }
+    printk("\n");
+#endif
+    usleep_range(1200,1300);
 }
 
-static int stk3x8xx_get_fifo_data(struct i2c_client *client, uint16_t *data)
+static int w1160_get_fifo_data(struct i2c_client *client, uint16_t *data)
 {
     int cnt = 0, min_index = 0, max_index = 0, ret = 0;
     char buffer[2] = {0};
 
-    //printk("%s in als_enabled=%d\n", __func__, stk3x8xx_als_data->als_enabled);
+    //printk("%s in als_enabled=%d\n", __func__, w1160_als_data->als_enabled);
 
-    memset((void *)stk3x8xx_fifo.frame, 0, sizeof(struct stk3x8xx_fifo_frame) * STK_FIFO_MAX_FRAME);
-    memset((void *)stk3x8xx_fifo.data, 0, sizeof(uint8_t) * STK_FIFO_MAX_LEN);
+    memset((void *)w1160_fifo.frame, 0, sizeof(struct w1160_fifo_frame) * STK_FIFO_MAX_FRAME);
+    memset((void *)w1160_fifo.data, 0, sizeof(uint8_t) * STK_FIFO_MAX_LEN);
 
     buffer[0] = STK_FIFOFCNT1_REG;
     ret = sensor_rx_data(client, buffer, 2);
     if(ret){
         printk("%s:read fifo cnt ERR\n", __func__);
     }
-    stk3x8xx_fifo.frame_cnt = ((buffer[0] & 0x03) << 8) | buffer[1];
-    if(stk3x8xx_fifo.frame_cnt > STK_FIFO_READ_TARGET){
-        stk3x8xx_fifo.frame_cnt = STK_FIFO_READ_TARGET;
+    w1160_fifo.frame_cnt = ((buffer[0] & 0x01) << 8) | buffer[1];
+    if(w1160_fifo.frame_cnt > STK_FIFO_READ_TARGET){
+        w1160_fifo.frame_cnt = STK_FIFO_READ_TARGET;
     }
-    stk3x8xx_fifo.fifo_frame_bytes = stk3x8xx_fifo.frame_cnt * stk3x8xx_fifo.byte_per_frame; // 1 Frame = ALS+C = 4 bytes
+    w1160_fifo.fifo_frame_bytes = w1160_fifo.frame_cnt * 2; // 1 Frame = ALS+C = 4 bytes
     printk("%s: byte_per_frame=%d frame_cnt =%d fifo_frame_bytes = %d buf0=0x%x buf1=0x%x\n",
         __func__,
-        stk3x8xx_fifo.byte_per_frame,
-        stk3x8xx_fifo.frame_cnt,
-        stk3x8xx_fifo.fifo_frame_bytes,
+        w1160_fifo.byte_per_frame,
+        w1160_fifo.frame_cnt,
+        w1160_fifo.fifo_frame_bytes,
         buffer[0],
         buffer[1]);
 
-    if (stk3x8xx_fifo.frame_cnt != 0) {
+    if (w1160_fifo.frame_cnt != 0) {
         /*read fifo data*/
-        stk3x8xx_fifo.data[0] = STK_FIFO_OUT_REG;
-        ret = sensor_rx_data(client, stk3x8xx_fifo.data, stk3x8xx_fifo.fifo_frame_bytes);
+        w1160_fifo.data[0] = STK_FIFO_OUT_REG;
+        ret = sensor_rx_data(client, w1160_fifo.data, w1160_fifo.fifo_frame_bytes);
         if(ret){
             printk("%s:read fifo cnt ERR\n", __func__);
         }
         //combine data
 
-        stk3x8xx_fifo_data_tran(stk3x8xx_fifo.data, stk3x8xx_fifo.fifo_data_sel, stk3x8xx_fifo.frame_cnt);
+        w1160_fifo_data_tran(w1160_fifo.data, w1160_fifo.fifo_data_sel, w1160_fifo.frame_cnt);
         /*get min max index*/
-        for(cnt = 1; cnt < stk3x8xx_fifo.frame_cnt; cnt++)
-            if(stk3x8xx_fifo.frame[cnt].als < stk3x8xx_fifo.frame[min_index].als)
+        for(cnt = 1; cnt < w1160_fifo.frame_cnt; cnt++)
+            if(w1160_fifo.frame[cnt].als < w1160_fifo.frame[min_index].als)
                 min_index = cnt;
-        for(cnt= 1; cnt < stk3x8xx_fifo.frame_cnt; cnt++)
-            if(stk3x8xx_fifo.frame[cnt].als > stk3x8xx_fifo.frame[max_index].als)
+        for(cnt= 1; cnt < w1160_fifo.frame_cnt; cnt++)
+            if(w1160_fifo.frame[cnt].als > w1160_fifo.frame[max_index].als)
                 max_index = cnt;
 
-        data[0] = stk3x8xx_fifo.frame[min_index].als;//als data
-        data[1] = stk3x8xx_fifo.frame[min_index].c;//gdata 550
-        data[2] = stk3x8xx_fifo.frame[max_index].als;//als data
-        data[3] = stk3x8xx_fifo.frame[max_index].c;//gdata 550
+        data[0] = w1160_fifo.frame[min_index].als;//als data
+        data[1] = w1160_fifo.frame[min_index].c;//gdata 550
+        data[2] = w1160_fifo.frame[max_index].als;//als data
+        data[3] = w1160_fifo.frame[max_index].c;//gdata 550
 
         //printk("%s: min_als_c=\t%d\t%d\t%d\n", __func__, data[0], data[1], min_index);
         //printk("%s: max_als_c=\t%d\t%d\t%d\n", __func__, data[2], data[3], max_index);
     }else{
-        printk("%s:fifo frame_cnt ERR cnt =%d\n", __func__, stk3x8xx_fifo.frame_cnt);
+        printk("%s:fifo frame_cnt ERR cnt =%d\n", __func__, w1160_fifo.frame_cnt);
     }
     //auto_gain = check_auto_gain(scp_service,port_handle,als_raw_data);
     /*clear fifo*/
     usleep_range(1000, 1100); 
-    buffer[0] = STK_FIFOCTRL1_REG;//0x60;
-    buffer[1] = STK_FIFOCTRL1_VAL;
+    buffer[0] = 0x68;//0x60;
+    buffer[1] = 0x01;
     ret = sensor_tx_data(client, buffer, 2);
     if(ret){
         printk("%s: clear fifo ERR, ret = %d\n", __func__, ret);
     }
 
-    //stk3x8xx_als_data->last_als = data[0];
-    //stk3x8xx_als_data->last_data_g = data[1];
-    //stk3x8xx_als_data->last_data_c = data[2];
+    //w1160_als_data->last_als = data[0];
+    //w1160_als_data->last_data_g = data[1];
+    //w1160_als_data->last_data_c = data[2];
     
     return ret;
 }
 #endif
 
-static int stk3x8xx_sensor_active(struct i2c_client *client, int enable, int rate)
+static int w1160_sensor_active(struct i2c_client *client, int enable, int rate)
 {
     struct sensor_private_data *sensor =
         (struct sensor_private_data *) i2c_get_clientdata(client);    
@@ -545,8 +531,8 @@ static int stk3x8xx_sensor_active(struct i2c_client *client, int enable, int rat
 #ifndef STK_POLL_ALS
     if (enable)
     {                
-        stk3x8xx_set_als_thd_h(client, 0x0000);
-        stk3x8xx_set_als_thd_l(client, 0xFFFF);
+        w1160_set_als_thd_h(client, 0x0000);
+        w1160_set_als_thd_l(client, 0xFFFF);
     }    
 #endif
     //clear als_en & wait_en
@@ -555,10 +541,10 @@ static int stk3x8xx_sensor_active(struct i2c_client *client, int enable, int rat
     if(enable)
     {
         sensor->ops->ctrl_data |= STK_STATE_EN_ALS_MASK;
-        stk3x8xx_als->auto_gain = false;
+        w1160_als->auto_gain = false;
 
 #ifdef STK_FIFO
-        stk3x8xx_get_fifo_info(client);
+        w1160_get_fifo_info(client);
 #endif
     }
 
@@ -571,12 +557,12 @@ static int stk3x8xx_sensor_active(struct i2c_client *client, int enable, int rat
         first_als = true;
         // sensor->ops->report(sensor->client);
     }
-    stk3x8xx_als->als_enabled = enable?true:false;
+    w1160_als->als_enabled = enable?true:false;
     printk("%s:reg=0x%x,reg_ctrl=0x%x,enable=%d\n", __func__, sensor->ops->ctrl_reg, sensor->ops->ctrl_data, enable);
     return result;
 }
 
-static int32_t stk3x8xx_check_pid(struct i2c_client *client)
+static int32_t w1160_check_pid(struct i2c_client *client)
 {
     char  reg_val;
 
@@ -592,15 +578,15 @@ static int32_t stk3x8xx_check_pid(struct i2c_client *client)
 }
 
 
-static int stk3a8xx_init_reg(struct i2c_client *client)
+static int w1160_init_reg(struct i2c_client *client)
 {
     int res = 0;
     int reg_num, i;
 
-    reg_num = sizeof(stk3x8xx_config_table)/sizeof(stk3x8xx_register_table);
+    reg_num = sizeof(w1160_config_table)/sizeof(w1160_register_table);
     for(i=0;i<reg_num;i++)
     {
-        res = sensor_write_reg(client, stk3x8xx_config_table[i].address, stk3x8xx_config_table[i].value);
+        res = sensor_write_reg(client, w1160_config_table[i].address, w1160_config_table[i].value);
         if(res < 0)
             {
                 printk("%s sensor_write_reg err \n", __func__);    
@@ -610,35 +596,35 @@ static int stk3a8xx_init_reg(struct i2c_client *client)
     return 0;
 }
 
-static int stk3x8xx_sensor_init(struct i2c_client *client)
+static int w1160_sensor_init(struct i2c_client *client)
 {
     int res = 0;
 //    uint8_t reg0x2=0,reg0x4e=0,reg0xdb=0;
 
     printk("%s init ...\n", __func__);
-    stk3x8xx_als = kzalloc(sizeof(struct stk3x8xx_data),GFP_KERNEL);
-    if(!stk3x8xx_als)
+    w1160_als = kzalloc(sizeof(struct w1160_data),GFP_KERNEL);
+    if(!w1160_als)
     {
-        printk(KERN_ERR "%s: failed to allocate stk3x8xx_data\n", __func__);
+        printk(KERN_ERR "%s: failed to allocate w1160_data\n", __func__);
         return -ENOMEM;
     }    
 
-    res = stk3x8xx_check_pid(client);
+    res = w1160_check_pid(client);
     if(res < 0)
     {   
-        printk(KERN_ERR "%s: stk3x8xx_check_pid fail\n", __func__);
+        printk(KERN_ERR "%s: w1160_check_pid fail\n", __func__);
         goto EXIT_ERR;
     }
 
     res = sensor_write_reg(client, STK_SW_RESET_REG, 0x1);
     if(res < 0)
     {   
-        printk(KERN_ERR "%s: stk3x8xx SWR fail\n", __func__);
+        printk(KERN_ERR "%s: w1160 SWR fail\n", __func__);
         goto EXIT_ERR;
     }
     
     usleep_range(15000, 15000);    
-    res = stk3a8xx_init_reg(client);
+    res = w1160_init_reg(client);
     if(res < 0)
         goto EXIT_ERR;
 #ifndef STK_POLL_ALS    
@@ -656,13 +642,13 @@ static int stk3x8xx_sensor_init(struct i2c_client *client)
         goto EXIT_ERR;    
 #endif
     
-    stk3x8xx_als->als_code_last = 0;
-    stk3x8xx_als->als_cnt = 0;
-    stk3x8xx_fifo.byte_per_frame = 2;//default
+    w1160_als->als_code_last = 0;
+    w1160_als->als_cnt = 0;
+    w1160_fifo.byte_per_frame = 2;//default
 
 #ifdef STK_ALS_FIR
-        memset(&stk3x8xx_als->fir, 0x00, sizeof(stk3x8xx_als->fir));  
-        atomic_set(&stk3x8xx_als->firlength, STK_FIR_LEN);   
+        memset(&w1160_als->fir, 0x00, sizeof(w1160_als->fir));  
+        atomic_set(&w1160_als->firlength, STK_FIR_LEN);   
 #endif
 
     
@@ -676,7 +662,7 @@ EXIT_ERR:
 
 
 
-static int stk3x8xx_report_abs_value(struct input_dev *input, int data)
+static int w1160_report_abs_value(struct input_dev *input, int data)
 {
             input_report_abs(input, ABS_MISC, data);
             input_sync(input);
@@ -707,32 +693,32 @@ static int stk_allreg(struct i2c_client *client)
 static int stk_als_cal(struct i2c_client *client, int als_data)
 {
     int index;   
-    int firlen = atomic_read(&stk3x8xx_als->firlength);   
+    int firlen = atomic_read(&w1160_als->firlength);   
 
     printk("%s: als_value %d\n",__func__, als_data);
-    stk3x8xx_als->als_code_last = als_data;    
-    if(stk3x8xx_als->fir.number < firlen)
+    w1160_als->als_code_last = als_data;    
+    if(w1160_als->fir.number < firlen)
     {                
-        stk3x8xx_als->fir.raw[stk3x8xx_als->fir.number] = als_data;
-        stk3x8xx_als->fir.sum += als_data;
-        stk3x8xx_als->fir.number++;
-        stk3x8xx_als->fir.idx++;
+        w1160_als->fir.raw[w1160_als->fir.number] = als_data;
+        w1160_als->fir.sum += als_data;
+        w1160_als->fir.number++;
+        w1160_als->fir.idx++;
     }
     else
     {
-        index = stk3x8xx_als->fir.idx % firlen;
-        stk3x8xx_als->fir.sum -= stk3x8xx_als->fir.raw[index];
-        stk3x8xx_als->fir.raw[index] = als_data;
-        stk3x8xx_als->fir.sum += als_data;
-        stk3x8xx_als->fir.idx++;
-        als_data = stk3x8xx_als->fir.sum/firlen;
+        index = w1160_als->fir.idx % firlen;
+        w1160_als->fir.sum -= w1160_als->fir.raw[index];
+        w1160_als->fir.raw[index] = als_data;
+        w1160_als->fir.sum += als_data;
+        w1160_als->fir.idx++;
+        als_data = w1160_als->fir.sum/firlen;
     }    
 
     return als_data;
 }
 #endif
 //add auto gain david 20210514
-static bool stk3x8xx_set_als_gain(struct i2c_client *client, uint16_t level)
+static bool w1160_set_als_gain(struct i2c_client *client, uint16_t level)
 {
     int ret = 0;
     uint8_t alsctrl_reg, gainctrl_reg, againctrl_reg, dgain, again;
@@ -798,42 +784,42 @@ static bool stk3x8xx_set_als_gain(struct i2c_client *client, uint16_t level)
         printk("%s sensor_write_reg err \n", __func__);
     }
 
-    stk3x8xx_als_dgain = dgain;
-    stk3x8xx_als_again = again;
-    printk("%s set level = %d %d %d\n", __func__, level, stk3x8xx_als_dgain, stk3x8xx_als_again);
+    w1160_als_dgain = dgain;
+    w1160_als_again = again;
+    printk("%s set level = %d %d %d\n", __func__, level, w1160_als_dgain, w1160_als_again);
 
     return true;
 }
 
-static bool stk3x8xx_als_auto_gain(struct i2c_client *client, uint16_t *als_data)
+static bool w1160_als_auto_gain(struct i2c_client *client, uint16_t *als_data)
 {
     bool result = false;
 
-    if (((als_data[0]) > STK3X8XX_AGC_THDH || (als_data[1] > STK3X8XX_AGC_THDH)) &&
-        (stk3x8xx_als_gain_level < STK3X8XX_MN_LV)) {
+    if (((als_data[0]) > W1160_AGC_THDH || (als_data[1] > W1160_AGC_THDH)) &&
+        (w1160_als_gain_level < W1160_MN_LV)) {
         // Reduce gain
-        printk("%s: cur lev:%d %d %d, up\n", __func__, stk3x8xx_als_gain_level, stk3x8xx_als_dgain, stk3x8xx_als_again);
-        stk3x8xx_als_gain_level++;
-        result = stk3x8xx_set_als_gain(client, stk3x8xx_als_gain_level);
-    } else if (((als_data[0] < STK3X8XX_AGC_THDL) && (als_data[1] < STK3X8XX_AGC_THDL)) &&
-        (stk3x8xx_als_gain_level > STK3X8XX_MX_LV)) {
+        printk("%s: cur lev:%d %d %d, up\n", __func__, w1160_als_gain_level, w1160_als_dgain, w1160_als_again);
+        w1160_als_gain_level++;
+        result = w1160_set_als_gain(client, w1160_als_gain_level);
+    } else if (((als_data[0] < W1160_AGC_THDL) && (als_data[1] < W1160_AGC_THDL)) &&
+        (w1160_als_gain_level > W1160_MX_LV)) {
         // Raise gain
-        printk("%s: cur lev:%d %d %d, dwn\n", __func__, stk3x8xx_als_gain_level, stk3x8xx_als_dgain, stk3x8xx_als_again);
-        stk3x8xx_als_gain_level--;
-        result = stk3x8xx_set_als_gain(client, stk3x8xx_als_gain_level);
+        printk("%s: cur lev:%d %d %d, dwn\n", __func__, w1160_als_gain_level, w1160_als_dgain, w1160_als_again);
+        w1160_als_gain_level--;
+        result = w1160_set_als_gain(client, w1160_als_gain_level);
     }
     return result;
 }
 //add auto gain david 20210514 end
 
 // lux_calc
-uint32_t als_ratio = 1.0; //als factory cali ratio,产线校准系数 
-uint32_t c_ratio = 1.0; //c factory cali ratio
+uint32_t w1160_als_ratio = 1.0; //als factory cali ratio,产线校准系数 
+uint32_t w1160_c_ratio = 1.0; //c factory cali ratio
 typedef enum {
     STK_ALS_DATA_ALS= 0,        // default
     STK_ALS_DATA_C,
     STK_ALS_DATA_SIZE,
-} stk3a8x_als_data_position;
+} W1160_als_data_position;
 
 typedef struct light_param {
     uint8_t group_sel;
@@ -852,9 +838,9 @@ typedef struct light_param {
 #define STK3A8X_SENSOR_PARE_NUM_2 2
 #define STK3A8X_INT_SCL 1000
 
-light_param lux_pare_sel[STK3A8X_SENSOR_PARE_NUM_2];
+light_param w1160_lux_pare_sel[STK3A8X_SENSOR_PARE_NUM_2];
 
-static uint32_t stk3a8x_als_compensation(uint32_t als_data_t, uint32_t c_data_t, uint8_t panel_sel)
+static uint32_t W1160_als_compensation(uint32_t als_data_t, uint32_t c_data_t, uint8_t panel_sel)
 {
     //To-do
     /*
@@ -894,11 +880,11 @@ static uint32_t stk3a8x_als_compensation(uint32_t als_data_t, uint32_t c_data_t,
     {
         case 0:
             for (i = 0; i < STK3A8X_SENSOR_PARE_NUM_2; i++) 
-                lux_pare_sel[i] = lux_pare_temp[i];
+                w1160_lux_pare_sel[i] = lux_pare_temp[i];
         break;
         default:
                 for (i = 0; i < STK3A8X_SENSOR_PARE_NUM_2; i++) 
-                lux_pare_sel[i] = lux_pare_temp_def[i];            
+                w1160_lux_pare_sel[i] = lux_pare_temp_def[i];            
         break;
     }
 
@@ -906,11 +892,11 @@ static uint32_t stk3a8x_als_compensation(uint32_t als_data_t, uint32_t c_data_t,
     //als_info.last_raw_data = raw_data * gain_ratio
     //f_calc_als_data[STK_ALS_DATA_ALS] = raw_data * gain_ratio * coef.
 
-    f_calc_als_data[STK_ALS_DATA_ALS] = ((uint32_t)als_data_t * als_ratio);
-    f_calc_als_data[STK_ALS_DATA_C] = ((uint32_t)c_data_t * c_ratio);
+    f_calc_als_data[STK_ALS_DATA_ALS] = ((uint32_t)als_data_t * w1160_als_ratio);
+    f_calc_als_data[STK_ALS_DATA_C] = ((uint32_t)c_data_t * w1160_c_ratio);
 
-    calc_tmp1 = lux_pare_sel[0].group_rule_mat;
-    calc_tmp2 = lux_pare_sel[0].group_rule_mat_2;
+    calc_tmp1 = w1160_lux_pare_sel[0].group_rule_mat;
+    calc_tmp2 = w1160_lux_pare_sel[0].group_rule_mat_2;
 
     div_ratio = f_calc_als_data[(uint8_t)calc_tmp1] * STK3A8X_INT_SCL; // *100 for not float type
     if(0 != f_calc_als_data[(uint8_t)calc_tmp2])
@@ -921,38 +907,38 @@ static uint32_t stk3a8x_als_compensation(uint32_t als_data_t, uint32_t c_data_t,
 
        //calc lux
     for(lux_calc_i = 0; lux_calc_i<lux_size; lux_calc_i++) {
-        if((div_ratio > lux_pare_sel[lux_calc_i].param_ac_ratio) || (lux_calc_i == (lux_size - 1))) {
-            if((lux_pare_sel[0].param_lower_thd > als_data_t) && (lux_pare_sel[0].param_lower_thd > c_data_t)){
+        if((div_ratio > w1160_lux_pare_sel[lux_calc_i].param_ac_ratio) || (lux_calc_i == (lux_size - 1))) {
+            if((w1160_lux_pare_sel[0].param_lower_thd > als_data_t) && (w1160_lux_pare_sel[0].param_lower_thd > c_data_t)){
                     //default
-                lux_calc_i = (lux_pare_sel[0].param_lower_sel);
+                lux_calc_i = (w1160_lux_pare_sel[0].param_lower_sel);
                 calc_tmp1 = f_calc_als_data[STK_ALS_DATA_ALS];
-                calc_tmp1 *= (lux_pare_sel[lux_calc_i].param_a2_scale);
+                calc_tmp1 *= (w1160_lux_pare_sel[lux_calc_i].param_a2_scale);
 
                 calc_tmp2 = f_calc_als_data[STK_ALS_DATA_C];
-                calc_tmp2 *= (lux_pare_sel[lux_calc_i].param_c2_scale);    
+                calc_tmp2 *= (w1160_lux_pare_sel[lux_calc_i].param_c2_scale);    
 
                 lux_calc = calc_tmp1 + calc_tmp2;
                 lux_calc_j = lux_calc_i;
                 lux_calc_i = (lux_size + 1);
 
                 if((lux_size + 1) == lux_calc_i) {
-                    printk("%s: als_sel = %d\n", __func__, (uint16_t)(lux_pare_sel[lux_calc_j].group_sel));
+                    printk("%s: als_sel = %d\n", __func__, (uint16_t)(w1160_lux_pare_sel[lux_calc_j].group_sel));
                 }
             } else {
                 entry_flag = false; //initial flag
-                if(0 == lux_pare_sel[lux_calc_i].group_rule){
-                    if(div_ratio > lux_pare_sel[lux_calc_i].param_ac_ratio)
+                if(0 == w1160_lux_pare_sel[lux_calc_i].group_rule){
+                    if(div_ratio > w1160_lux_pare_sel[lux_calc_i].param_ac_ratio)
                         entry_flag = true;          
                 }else{
-                    if(div_ratio < lux_pare_sel[lux_calc_i].param_ac_ratio)
+                    if(div_ratio < w1160_lux_pare_sel[lux_calc_i].param_ac_ratio)
                         entry_flag = true;
                 }
 
                 if((true == entry_flag) || (lux_calc_i == (lux_size - 1))) {
                     calc_tmp[STK_ALS_DATA_ALS] = f_calc_als_data[STK_ALS_DATA_ALS];
-                    calc_tmp[STK_ALS_DATA_ALS] *= (lux_pare_sel[lux_calc_i].param_a_scale); 
+                    calc_tmp[STK_ALS_DATA_ALS] *= (w1160_lux_pare_sel[lux_calc_i].param_a_scale); 
                     calc_tmp[STK_ALS_DATA_C] = f_calc_als_data[STK_ALS_DATA_C];
-                    calc_tmp[STK_ALS_DATA_C] *= (lux_pare_sel[lux_calc_i].param_c_scale);
+                    calc_tmp[STK_ALS_DATA_C] *= (w1160_lux_pare_sel[lux_calc_i].param_c_scale);
 
                     //normalize data
                     calc_tmp1 = 0;
@@ -970,14 +956,14 @@ static uint32_t stk3a8x_als_compensation(uint32_t als_data_t, uint32_t c_data_t,
                     if(0 != calc_tmp2)
                         calc_tmp_diff_ratio = calc_tmp_diff_ratio * STK3A8X_INT_SCL / abs((uint32_t)calc_tmp2); //*1000 for not flaot
 
-                    if(calc_tmp_diff_ratio > (lux_pare_sel[lux_calc_i].param_limit)) {
+                    if(calc_tmp_diff_ratio > (w1160_lux_pare_sel[lux_calc_i].param_limit)) {
                         lux_calc =  calc_tmp1 + calc_tmp2;
                     } else {
                         calc_tmp1 = f_calc_als_data[STK_ALS_DATA_ALS];
-                        calc_tmp1 *= (lux_pare_sel[lux_calc_i].param_a2_scale);
+                        calc_tmp1 *= (w1160_lux_pare_sel[lux_calc_i].param_a2_scale);
 
                         calc_tmp2 = f_calc_als_data[STK_ALS_DATA_C];
-                        calc_tmp2 *= (lux_pare_sel[lux_calc_i].param_c2_scale);    
+                        calc_tmp2 *= (w1160_lux_pare_sel[lux_calc_i].param_c2_scale);    
 
                         lux_calc = calc_tmp1 + calc_tmp2;
                     }
@@ -986,7 +972,7 @@ static uint32_t stk3a8x_als_compensation(uint32_t als_data_t, uint32_t c_data_t,
                     lux_calc_i = (lux_size + 1);
 
                     if((lux_size + 1) == lux_calc_i) {
-                        printk("%s: als_sel = %d\n", __func__, (uint16_t)(lux_pare_sel[lux_calc_j].group_sel));
+                        printk("%s: als_sel = %d\n", __func__, (uint16_t)(w1160_lux_pare_sel[lux_calc_j].group_sel));
                     }
                 }
             } 
@@ -1000,7 +986,7 @@ static uint32_t stk3a8x_als_compensation(uint32_t als_data_t, uint32_t c_data_t,
 
 //
 
-static int stk3x8xx_report_value(struct i2c_client *client)
+static int w1160_report_value(struct i2c_client *client)
 {
     struct sensor_private_data *sensor = (struct sensor_private_data *) i2c_get_clientdata(client);
     int result = 0;
@@ -1016,10 +1002,10 @@ static int stk3x8xx_report_value(struct i2c_client *client)
     uint32_t c_raw = 0;
     //uint8_t reg0x2=0,reg0x4e=0,reg0xdb=0;
 
-    stk3x8xx_als->als_cnt++;
-    if(stk3x8xx_als->als_cnt > 5){
-        stk3x8xx_dump_reg(client);
-        stk3x8xx_als->als_cnt = 0;
+    w1160_als->als_cnt++;
+    if(w1160_als->als_cnt > 5){
+        w1160_dump_reg(client);
+        w1160_als->als_cnt = 0;
     }
 
     flag_data = sensor_read_reg(client, STK_FLAG_REG);
@@ -1029,14 +1015,14 @@ static int stk3x8xx_report_value(struct i2c_client *client)
         return flag_data;
     }
 
-    if((!(flag_data & STK_FLG_ALSDR_MASK)) || stk3x8xx_als->auto_gain)
+    if((!(flag_data & STK_FLG_ALSDR_MASK)) || w1160_als->auto_gain)
     {
-        printk("%s skip frame flag=0x%02X auto:%d\n", __func__, flag_data, stk3x8xx_als->auto_gain);
-        stk3x8xx_als->auto_gain = false;
+        printk("%s skip frame flag=0x%02X auto:%d\n", __func__, flag_data, w1160_als->auto_gain);
+        w1160_als->auto_gain = false;
         return 0;
     }
     buffer[0] = STK_DATA1_ALS_REG;
-    result = sensor_rx_data(client, buffer, 4);
+    result = sensor_rx_data(client, buffer, 2);
     if (result)
     {
         printk("%s:line=%d,error\n",__func__,__LINE__);
@@ -1047,26 +1033,27 @@ static int stk3x8xx_report_value(struct i2c_client *client)
     }
 
 #ifdef STK_FIFO
-            result = stk3x8xx_get_fifo_data(client, fifo_data);
+            result = w1160_get_fifo_data(client, fifo_data);
             printk("%s, david get fifo data min:als-c:\t%d\t%d max:als-c:\t%d\t%d\n",
                 __func__, fifo_data[0], fifo_data[1], fifo_data[2], fifo_data[3]);
 #endif
 
-    gain_ratio = 128 * 4 / (stk3x8xx_als_dgain * stk3x8xx_als_again);
+    gain_ratio = 128 * 4 / (w1160_als_dgain * w1160_als_again);
 
     als = als_data[0] * gain_ratio; // als data
     c_raw = als_data[1] * gain_ratio;// c data
 
     //todo :: calc report_lux
-    //report_lux = stk3x8xx_get_als_lux(als, c_raw);
+    //report_lux = w1160_get_als_lux(als, c_raw);
     //lux = als * ALS_COEF + c_raw * C_COEF;
-    lux = stk3a8x_als_compensation(als, c_raw, 0);
+    lux = W1160_als_compensation(als, c_raw, 0);
+    lux = als_data[0];
 #ifdef STK_DEBUG_PRINTF
     printk("%s:lux als(raw)_c(raw)_gain= %d %d(%d)\t(%d)%d\t%d\t%d\n",
-        __func__, (uint32_t)lux, als, als_data[0], c_raw, als_data[1], stk3x8xx_als_dgain, stk3x8xx_als_again);
+        __func__, (uint32_t)lux, als, als_data[0], c_raw, als_data[1], w1160_als_dgain, w1160_als_again);
 #endif
     if (!first_als) {
-        stk3x8xx_als->auto_gain = stk3x8xx_als_auto_gain(client, als_data);
+        w1160_als->auto_gain = w1160_als_auto_gain(client, als_data);
     } else {
         printk("%s, first als data\n", __func__);
         first_als = false;
@@ -1075,37 +1062,37 @@ static int stk3x8xx_report_value(struct i2c_client *client)
     stk_als_cal(client, als_data[0]);
 #endif
     //printk("%s: als_value %d\n",__func__, als_value);
-    //index = stk3x8xx_report_abs_value(sensor->input_dev, als);    
-    index = stk3x8xx_report_abs_value(sensor->input_dev, lux);
+    //index = w1160_report_abs_value(sensor->input_dev, als);    
+    index = w1160_report_abs_value(sensor->input_dev, lux);
 
     return result;
 }
 
-struct sensor_operate stk3x8xx_ops = {
-    .name                = "ls_stk3x8xx",
+struct sensor_operate w1160_ops = {
+    .name                = "ls_w1160",
     .type                = SENSOR_TYPE_LIGHT,    //sensor type and it should be correct
-    .id_i2c              = LIGHT_ID_STK3X8XX,        //i2c id number
+    .id_i2c              = LIGHT_ID_W1160,        //i2c id number
     .read_reg            = STK_DATA1_ALS_REG,            //read data
     .read_len            = 2,                //data length
     .id_reg              = 0x3E,//SENSOR_UNKNOW_DATA,        //read device id from this register
-    .id_data             = STK3X8XX_PID,//SENSOR_UNKNOW_DATA,        //device id
+    .id_data             = 0xE5,//SENSOR_UNKNOW_DATA,        //device id
     .precision           = 16,                //16 bits
     .ctrl_reg            = STK_STATE_REG,            //enable or disable 
     .int_status_reg      = SENSOR_UNKNOW_DATA,            //intterupt status register
     .range               = {2,65535},        //range
     .brightness          ={5,255},     //brightness    
     .trig                = IRQF_TRIGGER_LOW | IRQF_ONESHOT | IRQF_SHARED,        
-    .active              = stk3x8xx_sensor_active,    
-    .init                = stk3x8xx_sensor_init,
-    .report              = stk3x8xx_report_value,
+    .active              = w1160_sensor_active,    
+    .init                = w1160_sensor_init,
+    .report              = w1160_report_value,
 };
 
 static struct sensor_operate *light_get_ops(void)
 {
-    return &stk3x8xx_ops;
+    return &w1160_ops;
 }
 
-static int __init stk3x8xx_init(void)
+static int __init w1160_init(void)
 {
     struct sensor_operate *ops = light_get_ops();
     int result = 0;
@@ -1114,7 +1101,7 @@ static int __init stk3x8xx_init(void)
     return result;
 }
 
-static void __exit stk3x8xx_exit(void)
+static void __exit w1160_exit(void)
 {
     struct sensor_operate *ops = light_get_ops();
     int type = ops->type;
@@ -1122,10 +1109,10 @@ static void __exit stk3x8xx_exit(void)
 }
 
 
-module_init(stk3x8xx_init);
-module_exit(stk3x8xx_exit);
+module_init(w1160_init);
+module_exit(w1160_exit);
 MODULE_AUTHOR("Lex Hsieh <lex_hsieh@sensortek.com.tw>");
-MODULE_DESCRIPTION("Sensortek stk3x8xx Proximity Sensor driver");
+MODULE_DESCRIPTION("Sensortek w1160 Proximity Sensor driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRIVER_VERSION);
 
