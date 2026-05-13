@@ -158,8 +158,26 @@ int sensor_read_reg(struct i2c_client *client, int addr)
 
 	return tmp[0];
 }
-
 EXPORT_SYMBOL(sensor_read_reg);
+
+int sensor_write_reg_mask(struct i2c_client *client, int addr, char value, char mask)
+{
+	char buffer[2];
+	int ret = 0, reg_tmp;
+	struct sensor_private_data* sensor =
+		(struct sensor_private_data *)i2c_get_clientdata(client);
+
+    reg_tmp = sensor_read_reg(client, addr);
+    reg_tmp = (reg_tmp & (~mask)) | (value & mask);
+
+	mutex_lock(&sensor->i2c_mutex);
+	buffer[0] = addr;
+	buffer[1] = reg_tmp;
+	ret = sensor_tx_data(client, &buffer[0], 2);
+	mutex_unlock(&sensor->i2c_mutex);
+	return ret;
+}
+EXPORT_SYMBOL(sensor_write_reg_mask);
 
 static int i2c_master_normal_recv(const struct i2c_client *client, char *buf, int count, int scl_rate)
  {

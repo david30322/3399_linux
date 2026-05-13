@@ -53,6 +53,12 @@ config LS_STK3X8XX
 config LS_STK3A6X
 	bool "light sensor stk3a6x"
 	default y
+config LS_STK6B1X
+	bool "light sensor stk6b1x"
+	default y
+config LS_STK6BCX
+	bool "light sensor stk6bcx"
+	default y
 config LS_W1160
 	bool "light sensor w1160"
 	default y

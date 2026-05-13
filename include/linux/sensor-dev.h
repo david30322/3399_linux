@@ -100,6 +100,8 @@ enum sensor_id {
 	LIGHT_ID_STK3X3X,
 	LIGHT_ID_STK3X8XX,
 	LIGHT_ID_STK3A6X,
+	LIGHT_ID_STK6B1X,
+	LIGHT_ID_STK6BCX,
 	LIGHT_ID_W1160,
 
 	PROXIMITY_ID_ALL,
@@ -110,6 +112,8 @@ enum sensor_id {
 	//david add 20210121
 	PROXIMITY_ID_STK3A5X,
 	PROXIMITY_ID_STK3X3X,
+	PROXIMITY_ID_STK6B1X,
+	PROXIMITY_ID_STK6BCX,
 	PROXIMITY_ID_STK3A6X,
 
 	TEMPERATURE_ID_ALL,
@@ -313,6 +317,7 @@ extern int sensor_unregister_slave(int type, struct i2c_client *client,
 #define PSENSOR_IOCTL_GET_ENABLED		_IOR(PSENSOR_IOCTL_MAGIC, 1, int *)
 #define PSENSOR_IOCTL_ENABLE				_IOW(PSENSOR_IOCTL_MAGIC, 2, int *)
 #define PSENSOR_IOCTL_DISABLE				_IOW(PSENSOR_IOCTL_MAGIC, 3, int *)
+#define PSENSOR_IOCTL_SET_RATE           _IOW(PSENSOR_IOCTL_MAGIC, 4, int *) //david add
 
 #ifdef CONFIG_COMPAT
 #define COMPAT_PSENSOR_IOCTL_GET_ENABLED	_IOR(PSENSOR_IOCTL_MAGIC, 1, compat_uptr_t)
@@ -338,6 +343,7 @@ extern int sensor_rx_data(struct i2c_client *client, char *rxData, int length);
 extern int sensor_tx_data(struct i2c_client *client, char *txData, int length);
 extern int sensor_write_reg(struct i2c_client *client, int addr, int value);
 extern int sensor_read_reg(struct i2c_client *client, int addr);
+extern int sensor_write_reg_mask(struct i2c_client *client, int addr, char value, char mask);
 extern int sensor_tx_data_normal(struct i2c_client *client, char *buf, int num);
 extern int sensor_rx_data_normal(struct i2c_client *client, char *buf, int num);
 extern int sensor_write_reg_normal(struct i2c_client *client, char value);

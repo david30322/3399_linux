@@ -590,6 +590,7 @@ static void stk3x3x_ps_get_min_max(struct i2c_client *client, int word_data)
         printk("%s: update psi: psa=%d,psi=%d\n", __func__, stk3x3x_ps_data->psa, stk3x3x_ps_data->psi);	
     }
 }
+#ifdef TUNE1
 static int stk3x3x_ps_tune_zero_func_fae(struct i2c_client *client, int raw_data)
 {
 	int ret, ps_diff;
@@ -681,6 +682,7 @@ static int stk3x3x_ps_tune_zero_func_fae(struct i2c_client *client, int raw_data
         __func__, raw_data, stk3x3x_ps_data->stk_ps_thd_h, stk3x3x_ps_data->stk_ps_thd_l, stk3x3x_ps_data->psi);
 	return 0;
 }	
+#endif
 #endif
 
 /*
@@ -791,6 +793,7 @@ EXIT_ERR:
 	return res;
 }
 
+#ifdef INT_MODE
 static int stk3x3x_clr_int(struct i2c_client *client)
 {
     int ret = 0;
@@ -811,7 +814,7 @@ err_out:
     printk("%s fail\n", __func__);
     return ret;
 }
-
+#endif
 static void stk3x3x_get_ps_status(struct i2c_client *client)
 {
     int ret;

@@ -111,7 +111,7 @@
 #define STK_FIFO_DATA_ALS               0x00
 #define STK_FIFO_DATA_C                 0x01
 #define STK_FIFO_DATA_ALSC              0x02
-#define STK_FIFOCTRL1_VAL               (STK_FIFO_STRM|STK_FIFO_DATA_ALS)
+#define STK_FIFOCTRL1_VAL               (STK_FIFO_STRM|STK_FIFO_DATA_ALSC)
 
 #define STK_SHORT_IT_EN                 0x80
 #define STK_SHORT_IT_192US              0x00
@@ -122,6 +122,8 @@
 #define STK_SHORT_IT_768US              0x05
 #define STK_SHORT_IT_864US              0x06
 #define STK_SHORT_IT_960US              0x07
+#define STK_SHORT_IT_2112US             0x14
+
 
 #define STK_STATE_EN_IRS_MASK    0x80
 #define STK_STATE_EN_AK_MASK    0x40
@@ -272,7 +274,7 @@ static struct stk3x8xx_register_table stk3x8xx_config_table[] =
 #ifdef STK_FIFO
     //{0x60,  0x30},//0xA2},
     {0x60,  STK_FIFOCTRL1_VAL},//0xA2},
-    {0x6F,  STK_SHORT_IT_EN|STK_SHORT_IT_192US},//0x14},
+    {0x6F,  STK_SHORT_IT_EN|STK_SHORT_IT_2112US},//0x14},
 #else
     {0x60,  STK_FIFO_OFF},//0xA2},
     {0x6F,  0x00},//0x14},
@@ -623,6 +625,7 @@ static int stk3x8xx_sensor_init(struct i2c_client *client)
         return -ENOMEM;
     }    
 
+    usleep_range(30000,35000);
     res = stk3x8xx_check_pid(client);
     if(res < 0)
     {   

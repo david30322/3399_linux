@@ -42,6 +42,8 @@
 #include <linux/soc/rockchip/rk_vendor_storage.h>
 
 #define SENSOR_CALIBRATION_LEN 64
+#define LIGHT_SENSOR_SAMPLE_RATE 105
+
 struct sensor_calibration_data {
 	s32 accel_offset[3];
 	s32 gyro_offset[3];
@@ -490,7 +492,7 @@ static int sensor_reset_rate(struct i2c_client *client, int rate)
 	else if (rate > 200)
 		rate = 200;
 
-    rate = 50;//david debug for 32670
+//    rate = 105;//david debug for 32670
 
 	dev_info(&client->dev, "stk david debug set sensor poll time to %dms\n", rate);
 
@@ -1194,7 +1196,8 @@ static long light_dev_ioctl(struct file *file,
 			return -EFAULT;
 		}
 		mutex_lock(&sensor->operation_mutex);
-        dev_err(&client->dev, "%s:stk light sensor rate= %d\n", __func__, rate);
+        rate = LIGHT_SENSOR_SAMPLE_RATE;
+        dev_err(&client->dev, "%s:stk david light sensor rate= %d\n", __func__, rate);
 		result = sensor_reset_rate(client, rate);
 		if (result < 0) {
 			mutex_unlock(&sensor->operation_mutex);
@@ -1279,8 +1282,23 @@ static long proximity_dev_ioctl(struct file *file,
 	struct sensor_private_data *sensor = g_sensor[SENSOR_TYPE_PROXIMITY];
 	void __user *argp = (void __user *)arg;
 	int result = 0;
+    short rate;
 
 	switch (cmd) {
+    case PSENSOR_IOCTL_SET_RATE:
+		if (copy_from_user(&rate, argp, sizeof(rate))) {
+			dev_err(&sensor->client->dev, "%s:failed to copy psensor rate from user space.\n", __func__);
+			return -EFAULT;
+		}
+        rate = 105;
+        dev_err(&sensor->client->dev, "%s:stk david set psensor rate= %d\n", __func__, rate);
+		result = sensor_reset_rate(&sensor->client, rate);
+		if (result < 0) {
+			mutex_unlock(&sensor->operation_mutex);
+			goto error;
+		}
+		mutex_unlock(&sensor->operation_mutex);
+		break;
 	case PSENSOR_IOCTL_GET_ENABLED:
 		result = sensor->status_cur;
 		if (copy_to_user(argp, &result, sizeof(result))) {
@@ -1307,7 +1325,7 @@ static long proximity_dev_ioctl(struct file *file,
 	default:
 		break;
 	}
-
+error:
 	return result;
 }
 
@@ -2056,6 +2074,8 @@ static const struct i2c_device_id sensor_id[] = {
 	{"ls_stk3x3x", LIGHT_ID_STK3X3X},
 	{"ls_stk3x8xx", LIGHT_ID_STK3X8XX},
 	{"ls_stk3a6x", LIGHT_ID_STK3A6X},
+	{"ls_stk6b1x", LIGHT_ID_STK6B1X},
+	{"ls_stk6bcx", LIGHT_ID_STK6BCX},
 	{"ls_w1160", LIGHT_ID_W1160},
 	/*add end*/
 	{"light_cm3232", LIGHT_ID_CM3232},
@@ -2076,6 +2096,8 @@ static const struct i2c_device_id sensor_id[] = {
     {"ps_stk3a5x", PROXIMITY_ID_STK3A5X},
 	{"ps_stk3x3x", PROXIMITY_ID_STK3X3X},
 	{"ps_stk3a6x", PROXIMITY_ID_STK3A6X},
+	//{"ps_stk6b1x", PROXIMITY_ID_STK6B1X},
+	{"ps_stk6bcx", PROXIMITY_ID_STK6BCX},
 	/*add end*/
 	/*temperature*/
 	{"temperature", TEMPERATURE_ID_ALL},
@@ -2126,6 +2148,10 @@ static struct of_device_id sensor_dt_ids[] = {
 	{ .compatible = "ls_stk3x8xx" },
 	{ .compatible = "ls_stk3a6x" },
 	{ .compatible = "ps_stk3a6x" },
+	{ .compatible = "ls_stk6b1x" },
+	//{ .compatible = "ps_stk6b1x" },
+	{ .compatible = "ls_stk6bcx" },
+	{ .compatible = "ps_stk6bcx" },
 	{ .compatible = "ls_w1160" },
 	/*add end*/
 	{ .compatible = "ls_photoresistor" },

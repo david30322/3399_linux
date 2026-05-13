@@ -9,3 +9,5 @@ obj-$(CONFIG_PS_STK3410) 		+= ps_stk3410.o
 obj-$(CONFIG_PS_STK3X3X) 		+= ps_stk3x3x.o
 obj-$(CONFIG_PS_STK3X8XX) 		+= ps_stk3x8xx.o
 obj-$(CONFIG_PS_STK3A6X) 		+= ps_stk3a6x.o
+#obj-$(CONFIG_PS_STK6B1X) 		+= ps_stk6b1x.o
+obj-$(CONFIG_PS_STK6BCX) 		+= ps_stk6bcx.o
